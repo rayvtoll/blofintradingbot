@@ -25,11 +25,13 @@ logger.info(f"{TRADING_HOURS=}")
 USE_FIXED_POSITION_SIZE = config("USE_FIXED_POSITION_SIZE", cast=bool, default=False)
 if USE_FIXED_POSITION_SIZE:
     FIXED_POSITION_SIZE = config("FIXED_POSITION_SIZE", cast=float, default=0.1)
+    logger.info(f"{FIXED_POSITION_SIZE=}")
 USE_DYNAMIC_POSITION_SIZE = not USE_FIXED_POSITION_SIZE
 if USE_DYNAMIC_POSITION_SIZE:
     DYNAMIC_POSITION_PERCENTAGE = config(
         "DYNAMIC_POSITION_PERCENTAGE", cast=float, default=1.0
     )
+    logger.info(f"{DYNAMIC_POSITION_PERCENTAGE=}")
 
 
 class Exchange:
