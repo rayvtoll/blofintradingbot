@@ -1,12 +1,12 @@
 import ccxt.pro as ccxt
 from copy import deepcopy
 from datetime import datetime, timedelta
-from decouple import config
+from decouple import config, Csv
+from coinalyze_scanner import CoinalyzeScanner
 from discord_client import post_to_discord
 import json
 from misc import Candle, Liquidation
 from logger import logger
-import threading
 
 
 # blofin
@@ -14,11 +14,27 @@ BLOFIN_SECRET_KEY = config("BLOFIN_SECRET_KEY")
 BLOFIN_API_KEY = config("BLOFIN_API_KEY")
 BLOFIN_PASSPHRASE = config("BLOFIN_PASSPHRASE")
 
+TRADING_DAYS = config("TRADING_DAYS", cast=Csv(int), default=[])
+logger.info(f"{TRADING_DAYS=}")
+
+TRADING_HOURS = config("TRADING_HOURS", cast=Csv(int), default=[])
+logger.info(f"{TRADING_HOURS=}")
+
+# dynamic vs fixed position size
+USE_FIXED_POSITION_SIZE = config("USE_FIXED_POSITION_SIZE", cast=bool, default=False)
+if USE_FIXED_POSITION_SIZE:
+    FIXED_POSITION_SIZE = config("FIXED_POSITION_SIZE", cast=float, default=0.1)
+USE_DYNAMIC_POSITION_SIZE = not USE_FIXED_POSITION_SIZE
+if USE_DYNAMIC_POSITION_SIZE:
+    DYNAMIC_POSITION_PERCENTAGE = config(
+        "DYNAMIC_POSITION_PERCENTAGE", cast=float, default=1.0
+    )
+
 
 class Exchange:
     """Exchange class to handle the exchange"""
 
-    def __init__(self, liquidations: list) -> None:
+    def __init__(self, liquidations: list, scanner: CoinalyzeScanner) -> None:
         self.exchange = ccxt.blofin(
             config={
                 "apiKey": BLOFIN_API_KEY,
@@ -28,6 +44,7 @@ class Exchange:
         )
         self.liquidations = liquidations
         self.positions = []
+        self.scanner = scanner
 
     async def set_leverage(self, symbol: str, leverage: int) -> dict:
         """Set the leverage for the exchange"""
@@ -80,10 +97,17 @@ class Exchange:
 
     async def set_position_size(self) -> None:
         """Set the position size for the exchange"""
+
+        # fixed position size based on FIXED_POSITION_SIZE
+        if USE_FIXED_POSITION_SIZE:
+            self._position_size = FIXED_POSITION_SIZE
+            return
+
+        # dynamic position size based on the balance using DYNAMIC_POSITION_PERCENTAGE
         try:
             balance = await self.exchange.fetch_balance()
             free = balance.get("USDT", {}).get("total", 2)
-            position_size = round(free / 100 * 4, 1)
+            position_size = round(free / 100 * (DYNAMIC_POSITION_PERCENTAGE * 4), 1)
             if (
                 not hasattr(self, "_position_size")
                 or self._position_size != position_size
@@ -132,7 +156,12 @@ class Exchange:
                     symbol="BTC/USDT:USDT",
                     type="market",
                     side=("buy" if liquidation.direction == "long" else "sell"),
-                    amount=self.position_size,
+                    amount=(
+                        self.position_size
+                        if (self.scanner.now.weekday() in TRADING_DAYS)
+                        and (self.scanner.now.hour in TRADING_HOURS)
+                        else 0.1
+                    ),
                     params={
                         "stopLoss": {
                             "triggerPrice": (
@@ -153,11 +182,15 @@ class Exchange:
                     },
                 )
                 logger.info(f"{order=}")
-                discord_message = f"Placed {liquidation.direction} order. Current open position(s):\n{json.dumps(self.positions, indent=2)}"
-                threading.Thread(
-                    target=post_to_discord,
-                    args=(discord_message,),
-                ).start()
+                post_to_discord(
+                    f"Placed {liquidation.direction} order:\n{json.dumps(order, indent=2)}",
+                )
+                self.positions = await self.exchange.fetch_positions(symbols=["BTC/USDT:USDT"])
+                logger.info(f"{self.positions=}")
+                post_to_discord(
+                    f"Open positions:\n{json.dumps(self.positions, indent=2)}",
+                    at_everyone=True,
+                )
                 # TODO: add take profit by limit order instead of market order0
             except Exception as e:
                 logger.error(f"Error placing order: {e}")

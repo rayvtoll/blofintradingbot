@@ -12,10 +12,18 @@ from typing import List
 COINALYZE_SECRET_API_KEY = config("COINALYZE_SECRET_API_KEY")
 COINALYZE_LIQUIDATION_URL = "https://api.coinalyze.net/v1/liquidation-history"
 FUTURE_MARKETS_URL = "https://api.coinalyze.net/v1/future-markets"
-MINIAL_NR_OF_LIQUIDATIONS = config("MINIAL_NR_OF_LIQUIDATIONS", default=3, cast=int)
+
+MINIMAL_NR_OF_LIQUIDATIONS = config("MINIMAL_NR_OF_LIQUIDATIONS", default=3, cast=int)
+logger.info(f"{MINIMAL_NR_OF_LIQUIDATIONS=}")
+
 N_MINUTES_TIMEDELTA = config("N_MINUTES_TIMEDELTA", default=5, cast=int)
+logger.info(f"{N_MINUTES_TIMEDELTA=}")
+
 MINIMAL_LIQUIDATION = config("MINIMAL_LIQUIDATION", default=10_000, cast=int)
+logger.info(f"{MINIMAL_LIQUIDATION=}")
+
 INTERVAL = config("INTERVAL", default="5min")
+logger.info(f"{INTERVAL=}")
 
 
 class CoinalyzeScanner:
@@ -73,7 +81,7 @@ class CoinalyzeScanner:
             if short > 100:
                 nr_of_liquidations += 1
         if (
-            nr_of_liquidations < MINIAL_NR_OF_LIQUIDATIONS
+            nr_of_liquidations < MINIMAL_NR_OF_LIQUIDATIONS
             and max(total_long, total_short) < 100_000
         ):
             return
@@ -100,10 +108,7 @@ class CoinalyzeScanner:
             self.liquidations.append(liquidation)
             discord_liquidations.append(liquidation)
         for liquidation in discord_liquidations:
-            threading.Thread(
-                target=post_to_discord,
-                args=(f"{liquidation=}",),
-            ).start()
+            post_to_discord(f"{liquidation=}")
 
     async def handle_coinalyze_url(
         self, url: str, include_params: bool = True, symbols: bool = False
