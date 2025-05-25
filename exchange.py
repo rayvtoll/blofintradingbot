@@ -1,3 +1,4 @@
+from typing import List
 import ccxt.pro as ccxt
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -34,7 +35,9 @@ if USE_DYNAMIC_POSITION_SIZE:
 class Exchange:
     """Exchange class to handle the exchange"""
 
-    def __init__(self, liquidations: list, scanner: CoinalyzeScanner) -> None:
+    def __init__(
+        self, liquidations: List[Liquidation], scanner: CoinalyzeScanner
+    ) -> None:
         self.exchange = ccxt.blofin(
             config={
                 "apiKey": BLOFIN_API_KEY,
@@ -42,9 +45,9 @@ class Exchange:
                 "password": BLOFIN_PASSPHRASE,
             }
         )
-        self.liquidations = liquidations
-        self.positions = []
-        self.scanner = scanner
+        self.liquidations: List[Liquidation] = liquidations
+        self.positions: List[dict] = []
+        self.scanner: CoinalyzeScanner = scanner
 
     async def set_leverage(self, symbol: str, leverage: int) -> dict:
         """Set the leverage for the exchange"""
@@ -144,6 +147,9 @@ class Exchange:
                     logger.info(
                         f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
                     )
+                    post_to_discord(
+                        f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}",
+                    )
                     return 0
 
             # place the order
@@ -184,12 +190,14 @@ class Exchange:
                 logger.info(f"{order=}")
                 post_to_discord(
                     f"Placed {liquidation.direction} order:\n{json.dumps(order, indent=2)}",
+                    at_everyone=True,
                 )
-                self.positions = await self.exchange.fetch_positions(symbols=["BTC/USDT:USDT"])
+                self.positions = await self.exchange.fetch_positions(
+                    symbols=["BTC/USDT:USDT"]
+                )
                 logger.info(f"{self.positions=}")
                 post_to_discord(
                     f"Open positions:\n{json.dumps(self.positions, indent=2)}",
-                    at_everyone=True,
                 )
                 # TODO: add take profit by limit order instead of market order0
             except Exception as e:
