@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-import threading
 from decouple import config
 from functools import cached_property
 from discord_client import post_to_discord

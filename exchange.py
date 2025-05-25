@@ -185,7 +185,7 @@ class Exchange:
                                 else round(self.last_candle.close * 0.985, 1)
                             )
                         },
-                        "marginMode": "cross",
+                        "marginMode": "isolated",
                         "positionSide": liquidation.direction,
                     },
                 )
