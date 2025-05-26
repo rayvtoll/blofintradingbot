@@ -51,12 +51,21 @@ class Exchange:
         self.positions: List[dict] = []
         self.scanner: CoinalyzeScanner = scanner
 
-    async def set_leverage(self, symbol: str, leverage: int) -> dict:
+    async def set_leverage(self, symbol: str, leverage: int) -> None:
         """Set the leverage for the exchange"""
         try:
             logger.info(
                 await self.exchange.set_leverage(
-                    symbol=symbol, leverage=leverage, params={"marginMode": "isolated"}
+                    symbol=symbol,
+                    leverage=leverage,
+                    params={"marginMode": "isolated", "positionSide": "long"},
+                )
+            )
+            logger.info(
+                await self.exchange.set_leverage(
+                    symbol=symbol,
+                    leverage=leverage,
+                    params={"marginMode": "isolated", "positionSide": "short"},
                 )
             )
         except Exception as e:
@@ -146,15 +155,15 @@ class Exchange:
             liquidation.direction == "short"
             and self.last_candle.close < liquidation.candle.low
         ):
-            for position in self.positions:
-                if position.get("side") == liquidation.direction:
-                    logger.info(
-                        f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
-                    )
-                    post_to_discord(
-                        f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}",
-                    )
-                    return 0
+            # for position in self.positions:
+            #     if position.get("side") == liquidation.direction:
+            #         logger.info(
+            #             f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
+            #         )
+            #         post_to_discord(
+            #             f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}",
+            #         )
+            #         return 0
 
             # place the order
             logger.info(f"Placing {liquidation.direction} order")
@@ -178,14 +187,16 @@ class Exchange:
                                 round(self.last_candle.close * 0.995, 2)
                                 if liquidation.direction == "long"
                                 else round(self.last_candle.close * 1.005, 1)
-                            )
+                            ),
+                            "reduceOnly": True,
                         },
                         "takeProfit": {
                             "triggerPrice": (
                                 round(self.last_candle.close * 1.015, 2)
                                 if liquidation.direction == "long"
                                 else round(self.last_candle.close * 0.985, 1)
-                            )
+                            ),
+                            "reduceOnly": True,
                         },
                         "marginMode": "isolated",
                         "positionSide": liquidation.direction,
