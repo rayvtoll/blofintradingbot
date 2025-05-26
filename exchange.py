@@ -15,12 +15,6 @@ BLOFIN_SECRET_KEY = config("BLOFIN_SECRET_KEY")
 BLOFIN_API_KEY = config("BLOFIN_API_KEY")
 BLOFIN_PASSPHRASE = config("BLOFIN_PASSPHRASE")
 
-TRADING_DAYS = config("TRADING_DAYS", cast=Csv(int), default=[])
-logger.info(f"{TRADING_DAYS=}")
-
-TRADING_HOURS = config("TRADING_HOURS", cast=Csv(int), default=[])
-logger.info(f"{TRADING_HOURS=}")
-
 # dynamic vs fixed position size
 USE_FIXED_POSITION_SIZE = config("USE_FIXED_POSITION_SIZE", cast=bool, default=False)
 if USE_FIXED_POSITION_SIZE:
@@ -155,15 +149,15 @@ class Exchange:
             liquidation.direction == "short"
             and self.last_candle.close < liquidation.candle.low
         ):
-            # for position in self.positions:
-            #     if position.get("side") == liquidation.direction:
-            #         logger.info(
-            #             f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
-            #         )
-            #         post_to_discord(
-            #             f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}",
-            #         )
-            #         return 0
+            for position in self.positions:
+                if position.get("side") == liquidation.direction:
+                    logger.info(
+                        f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
+                    )
+                    post_to_discord(
+                        f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}",
+                    )
+                    return 0
 
             # place the order
             logger.info(f"Placing {liquidation.direction} order")
@@ -175,12 +169,7 @@ class Exchange:
                     symbol="BTC/USDT:USDT",
                     type="market",
                     side=("buy" if liquidation.direction == "long" else "sell"),
-                    amount=(
-                        self.position_size
-                        if (self.scanner.now.weekday() in TRADING_DAYS)
-                        and (self.scanner.now.hour in TRADING_HOURS)
-                        else 0.1
-                    ),
+                    amount=self.position_size,
                     params={
                         "stopLoss": {
                             "triggerPrice": (
