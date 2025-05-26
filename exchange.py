@@ -190,16 +190,13 @@ class Exchange:
                     },
                 )
                 logger.info(f"{order=}")
-                post_to_discord(
-                    f"Placed {liquidation.direction} order:\n{json.dumps(order, indent=2)}",
-                    at_everyone=True,
-                )
                 self.positions = await self.exchange.fetch_positions(
                     symbols=["BTC/USDT:USDT"]
                 )
                 logger.info(f"{self.positions=}")
                 post_to_discord(
-                    f"Open positions:\n{json.dumps(self.positions, indent=2)}",
+                    f"{json.dumps({"order": order, "positions": self.positions}, indent=2)}",
+                    at_everyone=True,
                 )
                 # TODO: add take profit by limit order instead of market order0
             except Exception as e:
