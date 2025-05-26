@@ -55,7 +55,9 @@ class Exchange:
         """Set the leverage for the exchange"""
         try:
             logger.info(
-                await self.exchange.set_leverage(symbol=symbol, leverage=leverage)
+                await self.exchange.set_leverage(
+                    symbol=symbol, leverage=leverage, params={"marginMode": "isolated"}
+                )
             )
         except Exception as e:
             logger.warning(f"Error settings leverage: {e}")

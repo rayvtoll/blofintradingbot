@@ -1,4 +1,4 @@
-import threading
+# import threading
 from decouple import config
 import discord
 
@@ -33,4 +33,5 @@ def post_to_discord(message: str, at_everyone: bool = False) -> None:
 
         client.run(token=DISCORD_PRIVATE_KEY, log_handler=None)
 
-    threading.Thread(target=_post, args=(message, at_everyone)).start()
+    # threading.Thread(target=_post, args=(message, at_everyone)).start()
+    _post(message, at_everyone)
