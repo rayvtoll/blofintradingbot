@@ -16,6 +16,7 @@ from logger import logger
 BLOFIN_SECRET_KEY = config("BLOFIN_SECRET_KEY")
 BLOFIN_API_KEY = config("BLOFIN_API_KEY")
 BLOFIN_PASSPHRASE = config("BLOFIN_PASSPHRASE")
+LEVERAGE = config("LEVERAGE", cast=int, default=25)
 
 # dynamic vs fixed position size
 USE_FIXED_POSITION_SIZE = config("USE_FIXED_POSITION_SIZE", cast=bool, default=False)
@@ -47,21 +48,14 @@ class Exchange:
         self.positions: List[dict] = []
         self.scanner: CoinalyzeScanner = scanner
 
-    async def set_leverage(self, symbol: str, leverage: int) -> None:
+    async def set_leverage(self, symbol: str, leverage: int, direction: str) -> None:
         """Set the leverage for the exchange"""
         try:
             logger.info(
                 await self.exchange.set_leverage(
                     symbol=symbol,
                     leverage=leverage,
-                    params={"marginMode": "isolated", "positionSide": "long"},
-                )
-            )
-            logger.info(
-                await self.exchange.set_leverage(
-                    symbol=symbol,
-                    leverage=leverage,
-                    params={"marginMode": "isolated", "positionSide": "short"},
+                    params={"marginMode": "isolated", "positionSide": direction},
                 )
             )
         except Exception as e:
@@ -168,6 +162,11 @@ class Exchange:
 
             if await self.set_last_candle():
                 return 1
+            await self.set_leverage(
+                symbol="BTC/USDT:USDT",
+                leverage=LEVERAGE,
+                direction=liquidation.direction,
+            )
             try:
                 order = await self.exchange.create_order(
                     symbol="BTC/USDT:USDT",

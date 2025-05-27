@@ -7,7 +7,6 @@ from logger import logger
 
 
 LIQUIDATIONS = []
-LEVERAGE = config("LEVERAGE", cast=int, default=25)
 
 TRADING_DAYS = config("TRADING_DAYS", cast=Csv(int), default=[])
 logger.info(f"{TRADING_DAYS=}")
@@ -31,7 +30,6 @@ async def main() -> None:
     logger.info(
         "BTC markets that will be scanned: %s", ", ".join(scanner.symbols.split(","))
     )
-    await exchange.set_leverage(symbol="BTC/USDT:USDT", leverage=LEVERAGE)
 
     while True:
         now = datetime.now()
