@@ -18,7 +18,7 @@ BLOFIN_API_KEY = config("BLOFIN_API_KEY")
 BLOFIN_PASSPHRASE = config("BLOFIN_PASSPHRASE")
 LEVERAGE = config("LEVERAGE", cast=int, default=8)
 logger.info(f"{LEVERAGE=}")
-POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=int, default=1)
+POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=float, default=1.5)
 logger.info(f"{POSITION_PERCENTAGE=}")
 
 
