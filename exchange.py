@@ -1,3 +1,4 @@
+from asyncio import sleep
 import threading
 from typing import List
 import ccxt.pro as ccxt
@@ -109,21 +110,16 @@ class Exchange:
     async def set_position_size(self) -> None:
         """Set the position size for the exchange"""
 
-        margin_ratio_offset = 2.2
-
         # fixed position size based on FIXED_POSITION_SIZE
         if USE_FIXED_POSITION_SIZE:
-            self._position_size = FIXED_POSITION_SIZE / margin_ratio_offset
+            self._position_size = FIXED_POSITION_SIZE
             return
 
         # dynamic position size based on the balance using DYNAMIC_POSITION_PERCENTAGE
         try:
             balance = await self.exchange.fetch_balance()
             total = balance.get("USDT", {}).get("total", 2)
-            position_size = (
-                round((total / 100) * (DYNAMIC_POSITION_PERCENTAGE * 4), 1)
-                / margin_ratio_offset
-            )
+            position_size = round((total / 100) * (DYNAMIC_POSITION_PERCENTAGE * 4), 1)
             if (
                 not hasattr(self, "_position_size")
                 or self._position_size != position_size
@@ -210,7 +206,8 @@ class Exchange:
                 threading.Thread(
                     target=post_to_discord, args=(f"{self.positions=}", True)
                 ).start()
-                # TODO: add take profit by limit order instead of market order0
+                await sleep(2)
+                # TODO: add take profit by limit order instead of market order
             except Exception as e:
                 logger.error(f"Error placing order: {e}")
                 return 1
