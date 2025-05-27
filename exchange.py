@@ -16,19 +16,10 @@ from logger import logger
 BLOFIN_SECRET_KEY = config("BLOFIN_SECRET_KEY")
 BLOFIN_API_KEY = config("BLOFIN_API_KEY")
 BLOFIN_PASSPHRASE = config("BLOFIN_PASSPHRASE")
-LEVERAGE = config("LEVERAGE", cast=int, default=25)
-
-# dynamic vs fixed position size
-USE_FIXED_POSITION_SIZE = config("USE_FIXED_POSITION_SIZE", cast=bool, default=False)
-if USE_FIXED_POSITION_SIZE:
-    FIXED_POSITION_SIZE = config("FIXED_POSITION_SIZE", cast=float, default=0.1)
-    logger.info(f"{FIXED_POSITION_SIZE=}")
-USE_DYNAMIC_POSITION_SIZE = not USE_FIXED_POSITION_SIZE
-if USE_DYNAMIC_POSITION_SIZE:
-    DYNAMIC_POSITION_PERCENTAGE = config(
-        "DYNAMIC_POSITION_PERCENTAGE", cast=float, default=1.0
-    )
-    logger.info(f"{DYNAMIC_POSITION_PERCENTAGE=}")
+LEVERAGE = config("LEVERAGE", cast=int, default=8)
+logger.info(f"{LEVERAGE=}")
+POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=int, default=1)
+logger.info(f"{POSITION_PERCENTAGE=}")
 
 
 class Exchange:
@@ -78,6 +69,26 @@ class Exchange:
             return 1
         return 0
 
+    async def set_position_size(self) -> None:
+        """Set the position size for the exchange"""
+        try:
+            balance = await self.exchange.fetch_balance()
+            total_balance = balance.get("USDT", {}).get("total", 1)
+            usdt_size = (total_balance / (0.5 * LEVERAGE)) * POSITION_PERCENTAGE
+
+            self._position_size = round(
+                usdt_size / self.last_candle.close * LEVERAGE * 1000, 1
+            )
+        except Exception as e:
+            self._position_size = 0.1
+            logger.error(f"Error setting position size: {e}")
+        logger.info(f"{self._position_size=}")
+
+    @property
+    def position_size(self) -> int:
+        """Get the position size for the exchange"""
+        return self._position_size
+
     async def run_loop(self) -> int:
         """Run the loop for the exchange"""
 
@@ -100,34 +111,6 @@ class Exchange:
         # to prevent delay new orders, set the position size at the end of the loop
         await self.set_position_size()
         return 0
-
-    async def set_position_size(self) -> None:
-        """Set the position size for the exchange"""
-
-        # fixed position size based on FIXED_POSITION_SIZE
-        if USE_FIXED_POSITION_SIZE:
-            self._position_size = FIXED_POSITION_SIZE
-            return
-
-        # dynamic position size based on the balance using DYNAMIC_POSITION_PERCENTAGE
-        try:
-            balance = await self.exchange.fetch_balance()
-            total = balance.get("USDT", {}).get("total", 2)
-            position_size = round((total / 100) * (DYNAMIC_POSITION_PERCENTAGE * 4), 1)
-            if (
-                not hasattr(self, "_position_size")
-                or self._position_size != position_size
-            ):
-                self._position_size = position_size
-                logger.info(f"{position_size=}")
-        except Exception as e:
-            logger.error(f"Error fetching balance {e}")
-            self._position_size = 0.1
-
-    @property
-    def position_size(self) -> int:
-        """Get the position size for the exchange"""
-        return self._position_size
 
     async def apply_strategy(self, liquidation: Liquidation) -> int:
         """Apply the strategy for the exchange"""
