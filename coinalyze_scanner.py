@@ -5,6 +5,7 @@ from discord_client import post_to_discord
 from misc import Candle, Liquidation
 from logger import logger
 import requests
+import threading
 from typing import List
 
 
@@ -107,7 +108,10 @@ class CoinalyzeScanner:
             self.liquidations.append(liquidation)
             discord_liquidations.append(liquidation)
         for liquidation in discord_liquidations:
-            post_to_discord(f"{liquidation=}")
+            threading.Thread(
+                target=post_to_discord,
+                args=(f"{liquidation=}",),
+            ).start()
 
     async def handle_coinalyze_url(
         self, url: str, include_params: bool = True, symbols: bool = False

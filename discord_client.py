@@ -14,24 +14,19 @@ def post_to_discord(message: str, at_everyone: bool = False) -> None:
 
     Args:
         message (str): message to post to discord
+        at_everyone (bool, optional): whether to mention @everyone. Defaults to False.
     """
     if not USE_DISCORD:
         return
 
-    def _post(message: str, at_everyone: bool = False) -> None:
-        """Post a message to discord in a separate thread"""
+    intents = discord.Intents.default()
+    intents.messages = True
+    client = discord.Client(intents=intents)
 
-        intents = discord.Intents.default()
-        intents.messages = True
-        client = discord.Client(intents=intents)
+    @client.event
+    async def on_ready():
+        channel = client.get_channel(DISCORD_CHANNEL_ID)
+        await channel.send(f"{'@everyone\n' if at_everyone else ''}{message}")
+        await client.close()
 
-        @client.event
-        async def on_ready():
-            channel = client.get_channel(DISCORD_CHANNEL_ID)
-            await channel.send(f"{'@everyone\n' if at_everyone else ''}{message}")
-            await client.close()
-
-        client.run(token=DISCORD_PRIVATE_KEY, log_handler=None)
-
-    # threading.Thread(target=_post, args=(message, at_everyone)).start()
-    _post(message, at_everyone)
+    client.run(token=DISCORD_PRIVATE_KEY, log_handler=None)

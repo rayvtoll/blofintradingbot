@@ -1,3 +1,4 @@
+import threading
 from typing import List
 import ccxt.pro as ccxt
 from copy import deepcopy
@@ -154,9 +155,13 @@ class Exchange:
                     logger.info(
                         f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
                     )
-                    post_to_discord(
-                        f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}",
+                    discord_message = (
+                        f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}"
                     )
+                    threading.Thread(
+                        target=post_to_discord,
+                        args=(discord_message,),
+                    ).start()
                     return 0
 
             # place the order
@@ -196,10 +201,13 @@ class Exchange:
                     symbols=["BTC/USDT:USDT"]
                 )
                 logger.info(f"{self.positions=}")
-                post_to_discord(
-                    f"{json.dumps({"order": order, "positions": self.positions}, indent=2)}",
-                    at_everyone=True,
+                discord_message = (
+                    f"{json.dumps({"order": order, "positions": self.positions}, indent=2)}"
                 )
+                threading.Thread(
+                    target=post_to_discord,
+                    args=(discord_message, True)
+                ).start()
                 # TODO: add take profit by limit order instead of market order0
             except Exception as e:
                 logger.error(f"Error placing order: {e}")
