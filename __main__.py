@@ -54,9 +54,12 @@ async def main() -> None:
                 await scanner.handle_coinalyze_url(COINALYZE_LIQUIDATION_URL),
             )
             logger.info(f"{LIQUIDATIONS=}")
+            
+            # prevent double processing
+            sleep(1)
 
         # sleep some just in case
-        sleep(0.99)
+        sleep(0.1)
 
 
 if __name__ == "__main__":
