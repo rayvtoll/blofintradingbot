@@ -3,7 +3,7 @@ from typing import List
 import ccxt.pro as ccxt
 from copy import deepcopy
 from datetime import datetime, timedelta
-from decouple import config, Csv
+from decouple import config
 from coinalyze_scanner import CoinalyzeScanner
 from discord_client import post_to_discord
 import json
@@ -109,16 +109,21 @@ class Exchange:
     async def set_position_size(self) -> None:
         """Set the position size for the exchange"""
 
+        margin_ratio_offset = 2.2
+
         # fixed position size based on FIXED_POSITION_SIZE
         if USE_FIXED_POSITION_SIZE:
-            self._position_size = FIXED_POSITION_SIZE
+            self._position_size = FIXED_POSITION_SIZE / margin_ratio_offset
             return
 
         # dynamic position size based on the balance using DYNAMIC_POSITION_PERCENTAGE
         try:
             balance = await self.exchange.fetch_balance()
-            free = balance.get("USDT", {}).get("total", 2)
-            position_size = round(free / 100 * (DYNAMIC_POSITION_PERCENTAGE * 4), 1)
+            total = balance.get("USDT", {}).get("total", 2)
+            position_size = (
+                round((total / 100) * (DYNAMIC_POSITION_PERCENTAGE * 4), 1)
+                / margin_ratio_offset
+            )
             if (
                 not hasattr(self, "_position_size")
                 or self._position_size != position_size
@@ -155,9 +160,7 @@ class Exchange:
                     logger.info(
                         f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
                     )
-                    discord_message = (
-                        f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}"
-                    )
+                    discord_message = f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}"
                     threading.Thread(
                         target=post_to_discord,
                         args=(discord_message,),
@@ -197,16 +200,15 @@ class Exchange:
                     },
                 )
                 logger.info(f"{order=}")
+                threading.Thread(
+                    target=post_to_discord, args=(f"{order=}", True)
+                ).start()
                 self.positions = await self.exchange.fetch_positions(
                     symbols=["BTC/USDT:USDT"]
                 )
                 logger.info(f"{self.positions=}")
-                discord_message = (
-                    f"{json.dumps({"order": order, "positions": self.positions}, indent=2)}"
-                )
                 threading.Thread(
-                    target=post_to_discord,
-                    args=(discord_message, True)
+                    target=post_to_discord, args=(f"{self.positions=}", True)
                 ).start()
                 # TODO: add take profit by limit order instead of market order0
             except Exception as e:
