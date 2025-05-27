@@ -1,6 +1,7 @@
 # import threading
 from decouple import config
 import discord
+from logger import logger
 
 
 USE_DISCORD = config("USE_DISCORD", cast=bool, default=False)
@@ -29,4 +30,7 @@ def post_to_discord(message: str, at_everyone: bool = False) -> None:
         await channel.send(f"{'@everyone\n' if at_everyone else ''}{message}")
         await client.close()
 
-    client.run(token=DISCORD_PRIVATE_KEY, log_handler=None)
+    try:
+        client.run(token=DISCORD_PRIVATE_KEY, log_handler=None)
+    except Exception as e:
+        logger.error(f"Failed to post to Discord: {e}")
