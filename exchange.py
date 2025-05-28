@@ -4,7 +4,7 @@ from typing import List
 import ccxt.pro as ccxt
 from copy import deepcopy
 from datetime import datetime, timedelta
-from decouple import config
+from decouple import config, Csv
 from coinalyze_scanner import CoinalyzeScanner
 import json
 from misc import Candle, Liquidation
@@ -19,10 +19,16 @@ if USE_DISCORD:
 BLOFIN_SECRET_KEY = config("BLOFIN_SECRET_KEY")
 BLOFIN_API_KEY = config("BLOFIN_API_KEY")
 BLOFIN_PASSPHRASE = config("BLOFIN_PASSPHRASE")
+
+# trade settings
 LEVERAGE = config("LEVERAGE", cast=int, default=8)
 logger.info(f"{LEVERAGE=}")
 POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=float, default=1.5)
 logger.info(f"{POSITION_PERCENTAGE=}")
+TRADING_DAYS = config("TRADING_DAYS", cast=Csv(int), default=[])
+logger.info(f"{TRADING_DAYS=}")
+TRADING_HOURS = config("TRADING_HOURS", cast=Csv(int), default=[])
+logger.info(f"{TRADING_HOURS=}")
 
 
 class Exchange:
@@ -132,7 +138,7 @@ class Exchange:
             and self.last_candle.close < liquidation.candle.low
         ):
             for position in self.positions:
-                if position.get("side") == liquidation.direction:
+                if position.get("side") == liquidation.direction and position.get("contracts") > 1:
                     logger.info(
                         f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
                     )
@@ -159,7 +165,12 @@ class Exchange:
                     symbol="BTC/USDT:USDT",
                     type="market",
                     side=("buy" if liquidation.direction == "long" else "sell"),
-                    amount=self.position_size,
+                    amount=(
+                        self.position_size
+                        if self.scanner.now.weekday() in TRADING_DAYS
+                        and self.scanner.now.hour in TRADING_HOURS
+                        else 0.1
+                    ),
                     params={
                         "stopLoss": {
                             "triggerPrice": (

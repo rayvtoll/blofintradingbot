@@ -3,19 +3,11 @@ from discord_client import USE_DISCORD
 from asyncio import run, sleep
 from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
 from datetime import datetime
-from decouple import config, Csv
 from exchange import Exchange
 import json
 from logger import logger
 from misc import Liquidation
 import threading
-
-
-TRADING_DAYS = config("TRADING_DAYS", cast=Csv(int), default=[])
-logger.info(f"{TRADING_DAYS=}")
-
-TRADING_HOURS = config("TRADING_HOURS", cast=Csv(int), default=[])
-logger.info(f"{TRADING_HOURS=}")
 
 if USE_DISCORD:
     from coinalyze_scanner import (
@@ -25,7 +17,7 @@ if USE_DISCORD:
         N_MINUTES_TIMEDELTA,
     )
     from discord_client import GLOBAL_INDENT, USE_DISCORD, post_to_discord
-    from exchange import LEVERAGE, POSITION_PERCENTAGE
+    from exchange import LEVERAGE, POSITION_PERCENTAGE, TRADING_DAYS, TRADING_HOURS
 
     DISCORD_SETTINGS = dict(
         trading_days=TRADING_DAYS,
@@ -83,9 +75,7 @@ async def main() -> None:
             await sleep(0.9)
 
         if (
-            now.weekday() in TRADING_DAYS
-            and now.hour in TRADING_HOURS
-            and now.minute % 5 == 0
+            now.minute % 5 == 0
             and now.second == 0
         ) or first_run:
             first_run = False
