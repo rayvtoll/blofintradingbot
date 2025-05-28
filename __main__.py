@@ -2,8 +2,11 @@ from asyncio import run, sleep
 from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
 from datetime import datetime
 from decouple import config, Csv
+from discord_client import post_to_discord
 from exchange import Exchange
+import json
 from logger import logger
+import threading
 
 
 LIQUIDATIONS = []
@@ -33,6 +36,12 @@ async def main() -> None:
 
     while True:
         now = datetime.now()
+        if now.minute == 59 and now.second == 59:
+            logger.info(f"{exchange.positions=}")
+            threading.Thread(
+                target=post_to_discord,
+                args=(f"Open positions:\n{json.dumps(exchange.positions, indent=2)}",),
+            ).start()
         if (
             now.weekday() in TRADING_DAYS
             and now.hour in TRADING_HOURS
@@ -52,7 +61,7 @@ async def main() -> None:
                 await scanner.handle_coinalyze_url(COINALYZE_LIQUIDATION_URL),
             )
             logger.info(f"{LIQUIDATIONS=}")
-            
+
             # prevent double processing
             await sleep(1)
 

@@ -181,13 +181,6 @@ class Exchange:
                 threading.Thread(
                     target=post_to_discord, args=(f"{order=}", True)
                 ).start()
-                self.positions = await self.exchange.fetch_positions(
-                    symbols=["BTC/USDT:USDT"]
-                )
-                logger.info(f"{self.positions=}")
-                threading.Thread(
-                    target=post_to_discord, args=(f"{self.positions=}", True)
-                ).start()
                 await sleep(2)
                 # TODO: add take profit by limit order instead of market order
             except Exception as e:
