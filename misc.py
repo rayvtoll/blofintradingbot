@@ -22,3 +22,8 @@ class Liquidation:
     time: int
     nr_of_liquidations: int
     candle: Candle
+
+    def to_dict(self) -> dict:
+        """Convert the Liquidation instance to a json dumpable dictionary."""
+
+        return self.__dict__ | dict(candle=self.candle.__dict__)

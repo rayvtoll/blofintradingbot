@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 from decouple import config
+from discord_client import GLOBAL_INDENT, post_to_discord
 from functools import cached_property
-from discord_client import post_to_discord
-from misc import Candle, Liquidation
+import json
 from logger import logger
+from misc import Candle, Liquidation
 import requests
 import threading
 from typing import List
@@ -86,7 +87,7 @@ class CoinalyzeScanner:
         ):
             return
 
-        discord_liquidations = []
+        discord_liquidations: List[Liquidation] = []
         if total_long > MINIMAL_LIQUIDATION:
             liquidation = Liquidation(
                 amount=total_long,
@@ -110,7 +111,9 @@ class CoinalyzeScanner:
         for liquidation in discord_liquidations:
             threading.Thread(
                 target=post_to_discord,
-                args=(f"{liquidation=}",),
+                args=(
+                    f"liquidation: {json.dumps(liquidation.to_dict(), indent=GLOBAL_INDENT)}",
+                ),
             ).start()
 
     async def handle_coinalyze_url(
