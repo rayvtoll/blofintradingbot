@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 from decouple import config
-from discord_client import GLOBAL_INDENT, post_to_discord
 from functools import cached_property
 import json
 from logger import logger
@@ -8,6 +7,10 @@ from misc import Candle, Liquidation
 import requests
 import threading
 from typing import List
+
+from discord_client import USE_DISCORD
+if USE_DISCORD:
+    from discord_client import GLOBAL_INDENT, post_to_discord
 
 
 COINALYZE_SECRET_API_KEY = config("COINALYZE_SECRET_API_KEY")
@@ -31,7 +34,7 @@ class CoinalyzeScanner:
     """Scans coinalyze to notify for changes in open interest and liquidations through
     text to speech"""
 
-    def __init__(self, now: datetime, liquidations: list) -> None:
+    def __init__(self, now: datetime, liquidations: List[Liquidation]) -> None:
         self.now = now
         self.liquidations = liquidations
 
@@ -87,7 +90,6 @@ class CoinalyzeScanner:
         ):
             return
 
-        discord_liquidations: List[Liquidation] = []
         if total_long > MINIMAL_LIQUIDATION:
             liquidation = Liquidation(
                 amount=total_long,
@@ -97,7 +99,6 @@ class CoinalyzeScanner:
                 candle=candle,
             )
             self.liquidations.append(liquidation)
-            discord_liquidations.append(liquidation)
         if total_short > MINIMAL_LIQUIDATION:
             liquidation = Liquidation(
                 amount=total_short,
@@ -107,12 +108,11 @@ class CoinalyzeScanner:
                 candle=candle,
             )
             self.liquidations.append(liquidation)
-            discord_liquidations.append(liquidation)
-        for liquidation in discord_liquidations:
+        if USE_DISCORD and self.liquidations:
             threading.Thread(
                 target=post_to_discord,
                 args=(
-                    f"liquidation: {json.dumps(liquidation.to_dict(), indent=GLOBAL_INDENT)}",
+                    f"liquidations: {json.dumps([liquidation.to_dict() for liquidation in self.liquidations], indent=GLOBAL_INDENT)}",
                 ),
             ).start()
 
