@@ -36,12 +36,16 @@ async def main() -> None:
 
     while True:
         now = datetime.now()
-        if now.minute == 59 and now.second == 59:
+        if now.minute == 59 and now.second == 0:
             logger.info(f"{exchange.positions=}")
             threading.Thread(
                 target=post_to_discord,
                 args=(f"Open positions:\n{json.dumps(exchange.positions, indent=2)}",),
             ).start()
+
+            # prevent double processing
+            await sleep(0.9)
+
         if (
             now.weekday() in TRADING_DAYS
             and now.hour in TRADING_HOURS
@@ -63,7 +67,7 @@ async def main() -> None:
             logger.info(f"{LIQUIDATIONS=}")
 
             # prevent double processing
-            await sleep(1)
+            await sleep(0.9)
 
         # sleep some just in case
         await sleep(0.1)
