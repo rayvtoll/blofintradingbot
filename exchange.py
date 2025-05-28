@@ -6,7 +6,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from decouple import config
 from coinalyze_scanner import CoinalyzeScanner
-from discord_client import post_to_discord
+from discord_client import GLOBAL_INDENT, post_to_discord
 import json
 from misc import Candle, Liquidation
 from logger import logger
@@ -133,7 +133,7 @@ class Exchange:
                     logger.info(
                         f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
                     )
-                    discord_message = f"Already in {position.get('side')} position:\n{json.dumps(position, indent=2)}"
+                    discord_message = f"Already in {position.get('side')} position: {json.dumps(position, indent=GLOBAL_INDENT)}"
                     threading.Thread(
                         target=post_to_discord,
                         args=(discord_message,),
@@ -179,7 +179,8 @@ class Exchange:
                 )
                 logger.info(f"{order=}")
                 threading.Thread(
-                    target=post_to_discord, args=(f"{order=}", True)
+                    target=post_to_discord,
+                    args=(f"order: {json.dumps(order, indent=GLOBAL_INDENT)}", True),
                 ).start()
                 await sleep(2)
                 # TODO: add take profit by limit order instead of market order

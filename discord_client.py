@@ -4,6 +4,7 @@ import discord
 from logger import logger
 
 
+GLOBAL_INDENT = config("GLOBAL_INDENT", cast=int, default=4)
 USE_DISCORD = config("USE_DISCORD", cast=bool, default=False)
 if USE_DISCORD:
     DISCORD_CHANNEL_ID = config("DISCORD_CHANNEL_ID", cast=int)

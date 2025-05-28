@@ -1,9 +1,15 @@
 from asyncio import run, sleep
-from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
+from coinalyze_scanner import (
+    INTERVAL,
+    MINIMAL_NR_OF_LIQUIDATIONS,
+    N_MINUTES_TIMEDELTA,
+    CoinalyzeScanner,
+    COINALYZE_LIQUIDATION_URL,
+)
 from datetime import datetime
 from decouple import config, Csv
-from discord_client import post_to_discord
-from exchange import Exchange
+from discord_client import GLOBAL_INDENT, post_to_discord
+from exchange import LEVERAGE, POSITION_PERCENTAGE, Exchange
 import json
 from logger import logger
 import threading
@@ -29,12 +35,28 @@ async def main() -> None:
     exchange = Exchange(LIQUIDATIONS, scanner)
 
     # clear the terminal and start the bot
-    info = "Starting the Bot..."
-    logger.info(info)
-    threading.Thread(target=post_to_discord, args=(info, True)).start()
+    info = "Starting the bot"
+    logger.info(info + "...")
     logger.info(
         "BTC markets that will be scanned: %s", ", ".join(scanner.symbols.split(","))
     )
+    discord_settings = dict(
+        trading_days=TRADING_DAYS,
+        trading_hours=TRADING_HOURS,
+        leverage=LEVERAGE,
+        position_percentage=POSITION_PERCENTAGE,
+        n_minutes_timedelta=N_MINUTES_TIMEDELTA,
+        minimal_nr_of_liquidations=MINIMAL_NR_OF_LIQUIDATIONS,
+        interval=INTERVAL,
+        symbols=scanner.symbols.split(","),
+    )
+    threading.Thread(
+        target=post_to_discord,
+        args=(
+            f"{info} with settings: {json.dumps(discord_settings, indent=GLOBAL_INDENT)}",
+            True,
+        ),
+    ).start()
 
     while True:
         now = datetime.now()
@@ -42,7 +64,9 @@ async def main() -> None:
             logger.info(f"{exchange.positions=}")
             threading.Thread(
                 target=post_to_discord,
-                args=(f"Open positions:\n{json.dumps(exchange.positions, indent=2)}",),
+                args=(
+                    f"Open positions: {json.dumps(exchange.positions, indent=GLOBAL_INDENT)}",
+                ),
             ).start()
 
             # prevent double processing
