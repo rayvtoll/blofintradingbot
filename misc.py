@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass
@@ -26,4 +27,8 @@ class Liquidation:
     def to_dict(self) -> dict:
         """Convert the Liquidation instance to a json dumpable dictionary."""
 
-        return self.__dict__ | dict(candle=self.candle.__dict__)
+        return (
+            dict(date_time=str(datetime.fromtimestamp(self.time)))
+            | self.__dict__
+            | dict(candle=self.candle.__dict__)
+        )
