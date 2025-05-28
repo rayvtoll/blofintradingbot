@@ -29,7 +29,9 @@ async def main() -> None:
     exchange = Exchange(LIQUIDATIONS, scanner)
 
     # clear the terminal and start the bot
-    logger.info("Starting the Bot...")
+    info = "Starting the Bot..."
+    logger.info(info)
+    threading.Thread(target=post_to_discord, args=(info, True)).start()
     logger.info(
         "BTC markets that will be scanned: %s", ", ".join(scanner.symbols.split(","))
     )
