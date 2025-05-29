@@ -138,12 +138,19 @@ class Exchange:
             and self.last_candle.close < liquidation.candle.low
         ):
             for position in self.positions:
-                if position.get("side") == liquidation.direction and position.get("contracts") > 1:
+                if (
+                    position.get("side") == liquidation.direction
+                    and position.get("contracts") > 1
+                ):
+                    position_info = position.get("info", {})
                     logger.info(
-                        f"Already in {position.get('side')} position {position.get('info', {}).get('positionId', '')}"
+                        f"Already in {position.get('side')} position {position_info.get('positionId', '')}"
                     )
                     if USE_DISCORD:
-                        discord_message = f"Already in {position.get('side')} position: {json.dumps(position, indent=GLOBAL_INDENT)}"
+                        discord_message = (
+                            f"Already in {position.get('side')} position: "
+                            + f"{json.dumps(position_info, indent=GLOBAL_INDENT)}"
+                        )
                         threading.Thread(
                             target=post_to_discord,
                             args=(discord_message,),
@@ -192,12 +199,13 @@ class Exchange:
                         "positionSide": liquidation.direction,
                     },
                 )
-                logger.info(f"{order=}")
+                order_info = order.get("info", {})
+                logger.info(f"{order_info=}")
                 if USE_DISCORD:
                     threading.Thread(
                         target=post_to_discord,
                         args=(
-                            f"order: {json.dumps(order, indent=GLOBAL_INDENT)}",
+                            f"order: {json.dumps(order_info, indent=GLOBAL_INDENT)}",
                             True,
                         ),
                     ).start()

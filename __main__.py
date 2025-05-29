@@ -44,7 +44,7 @@ async def main() -> None:
     exchange = Exchange(LIQUIDATIONS, scanner)
 
     # clear the terminal and start the bot
-    info = "Starting the bot"
+    info = "Starting / Restarting the bot"
     logger.info(info + "...")
     logger.info(
         "BTC markets that will be scanned: %s", ", ".join(scanner.symbols.split(","))
@@ -62,22 +62,23 @@ async def main() -> None:
     while True:
         now = datetime.now()
         if now.minute == 59 and now.second == 0:
-            logger.info(f"{exchange.positions=}")
+            positions_info = [
+                position.get("info", {}) for position in exchange.positions
+            ]
+            logger.info(f"{positions_info=}")
             if USE_DISCORD:
                 threading.Thread(
                     target=post_to_discord,
                     args=(
-                        f"Open positions: {json.dumps(exchange.positions, indent=GLOBAL_INDENT)}",
+                        "Open positions: "
+                        + f"{json.dumps(positions_info, indent=GLOBAL_INDENT)}",
                     ),
                 ).start()
 
             # prevent double processing
             await sleep(0.9)
 
-        if (
-            now.minute % 5 == 0
-            and now.second == 0
-        ) or first_run:
+        if (now.minute % 5 == 0 and now.second == 0) or first_run:
             first_run = False
             scanner.now = now
 
