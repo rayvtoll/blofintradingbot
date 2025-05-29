@@ -27,9 +27,13 @@ def post_to_discord(message: str, at_everyone: bool = False) -> None:
 
     @client.event
     async def on_ready():
-        channel = client.get_channel(DISCORD_CHANNEL_ID)
-        await channel.send(f"{'@everyone\n' if at_everyone else ''}{message}")
-        await client.close()
+        try:
+            channel = client.get_channel(DISCORD_CHANNEL_ID)
+            await channel.send(f"{'@everyone\n' if at_everyone else ''}{message}")
+            await client.close()
+        except Exception as e:
+            logger.error(f"Failed to post to Discord: {e}")
+            await client.close()
 
     try:
         client.run(token=DISCORD_PRIVATE_KEY, log_handler=None)
