@@ -200,7 +200,12 @@ class Exchange:
                         target=post_to_discord,
                         args=(
                             f"order: {json.dumps(order_info|order_params, indent=GLOBAL_INDENT)}",
-                            True,
+                            (
+                                True
+                                if self.scanner.now.weekday() in TRADING_DAYS
+                                and self.scanner.now.hour in TRADING_HOURS
+                                else False
+                            ),
                         ),
                     ).start()
                 await sleep(2)
