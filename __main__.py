@@ -62,16 +62,27 @@ async def main() -> None:
     while True:
         now = datetime.now()
         if now.minute == 59 and now.second == 0:
+            # get open positions to prevent double positions
+            exchange.positions = await exchange.exchange.fetch_positions(
+                symbols=["BTC/USDT:USDT"]
+            )
             positions_info = [
                 position.get("info", {}) for position in exchange.positions
             ]
-            logger.info(f"{positions_info=}")
+            exchange.open_orders = await exchange.exchange.fetch_open_orders(
+                params={"tpsl": True}
+            )
+            open_orders_info = [order.get("info", {}) for order in exchange.open_orders]
+            open_positions_and_orders = {
+                "open_positions": positions_info,
+                "open_orders": open_orders_info,
+            }
+            logger.info(f"{open_positions_and_orders=}")
             if USE_DISCORD:
                 threading.Thread(
                     target=post_to_discord,
                     args=(
-                        "Open positions: "
-                        + f"{json.dumps(positions_info, indent=GLOBAL_INDENT)}",
+                        f"{json.dumps(open_positions_and_orders, indent=GLOBAL_INDENT)}",
                     ),
                 ).start()
 

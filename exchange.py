@@ -46,6 +46,7 @@ class Exchange:
         )
         self.liquidations: List[Liquidation] = liquidations
         self.positions: List[dict] = []
+        self.open_orders: List[dict] = []
         self.scanner: CoinalyzeScanner = scanner
 
     async def set_leverage(self, symbol: str, leverage: int, direction: str) -> None:
@@ -106,9 +107,6 @@ class Exchange:
         if await self.set_last_candle():
             return 1
 
-        # get open positions to prevent double positions
-        self.positions = await self.exchange.fetch_positions(symbols=["BTC/USDT:USDT"])
-
         # loop over detected liquidations
         for liquidation in deepcopy(self.liquidations):
 
@@ -137,25 +135,25 @@ class Exchange:
             liquidation.direction == "short"
             and self.last_candle.close < liquidation.candle.low
         ):
+            self.positions = await self.exchange.fetch_positions(
+                symbols=["BTC/USDT:USDT"]
+            )
+
+            # outside trading hours and days, place a small order, inside trading hours
+            # and days, place a full order unless there already is a full position,
+            # then also place a small order
+            amount = (
+                self.position_size
+                if self.scanner.now.weekday() in TRADING_DAYS
+                and self.scanner.now.hour in TRADING_HOURS
+                else 0.1
+            )
             for position in self.positions:
                 if (
                     position.get("side") == liquidation.direction
                     and position.get("contracts") > 1
                 ):
-                    position_info = position.get("info", {})
-                    logger.info(
-                        f"Already in {position.get('side')} position {position_info.get('positionId', '')}"
-                    )
-                    if USE_DISCORD:
-                        discord_message = (
-                            f"Already in {position.get('side')} position: "
-                            + f"{json.dumps(position_info, indent=GLOBAL_INDENT)}"
-                        )
-                        threading.Thread(
-                            target=post_to_discord,
-                            args=(discord_message,),
-                        ).start()
-                    return 0
+                    amount = 0.1
 
             # place the order
             logger.info(f"Placing {liquidation.direction} order")
@@ -168,16 +166,11 @@ class Exchange:
                 direction=liquidation.direction,
             )
             try:
-                order = await self.exchange.create_order(
+                order_params = dict(
                     symbol="BTC/USDT:USDT",
                     type="market",
                     side=("buy" if liquidation.direction == "long" else "sell"),
-                    amount=(
-                        self.position_size
-                        if self.scanner.now.weekday() in TRADING_DAYS
-                        and self.scanner.now.hour in TRADING_HOURS
-                        else 0.1
-                    ),
+                    amount=amount,
                     params={
                         "stopLoss": {
                             "triggerPrice": (
@@ -199,13 +192,14 @@ class Exchange:
                         "positionSide": liquidation.direction,
                     },
                 )
+                order = await self.exchange.create_order(**order_params)
                 order_info = order.get("info", {})
-                logger.info(f"{order_info=}")
+                logger.info(f"{order_info|order_params=}")
                 if USE_DISCORD:
                     threading.Thread(
                         target=post_to_discord,
                         args=(
-                            f"order: {json.dumps(order_info, indent=GLOBAL_INDENT)}",
+                            f"order: {json.dumps(order_info|order_params, indent=GLOBAL_INDENT)}",
                             True,
                         ),
                     ).start()
