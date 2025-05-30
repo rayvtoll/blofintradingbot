@@ -199,8 +199,7 @@ class Exchange:
                     threading.Thread(
                         target=post_to_discord,
                         kwargs=dict(
-                            messages=[f"order:"]
-                            + [f"{json_dumps(order_info|order_params)}"],
+                            messages=[f"order:\n{json_dumps(order_info|order_params)}"],
                             at_everyone=(
                                 True
                                 if self.scanner.now.weekday() in TRADING_DAYS

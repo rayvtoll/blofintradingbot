@@ -54,8 +54,7 @@ async def main() -> None:
         threading.Thread(
             target=post_to_discord,
             kwargs=dict(
-                messages=[f"{info} with settings:"]
-                + [f"{json_dumps(DISCORD_SETTINGS)}"],
+                messages=[f"{info} with settings:\n{json_dumps(DISCORD_SETTINGS)}"],
                 at_everyone=True,
             ),
         ).start()
