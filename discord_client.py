@@ -1,6 +1,8 @@
 # import threading
+from typing import List
 from decouple import config
 import discord
+import json
 from logger import logger
 
 
@@ -11,7 +13,13 @@ if USE_DISCORD:
     DISCORD_PRIVATE_KEY = config("DISCORD_PRIVATE_KEY")
 
 
-def post_to_discord(message: str, at_everyone: bool = False) -> None:
+def json_dumps(obj: dict | list) -> str:
+    """Convert an object to a JSON string with indentation"""
+
+    return json.dumps(obj, indent=GLOBAL_INDENT)
+
+
+def post_to_discord(messages: List[str], at_everyone: bool = False) -> None:
     """Post a message to discord
 
     Args:
@@ -29,10 +37,11 @@ def post_to_discord(message: str, at_everyone: bool = False) -> None:
     async def on_ready():
         try:
             channel = client.get_channel(DISCORD_CHANNEL_ID)
-            await channel.send(f"{'@everyone\n' if at_everyone else ''}{message}")
-            await client.close()
+            for message in messages:
+                await channel.send(f"{'@everyone\n' if at_everyone else ''}{message}")
         except Exception as e:
             logger.error(f"Failed to post to Discord: {e}")
+        finally:
             await client.close()
 
     try:

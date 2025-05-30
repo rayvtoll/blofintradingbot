@@ -9,8 +9,9 @@ import threading
 from typing import List
 
 from discord_client import USE_DISCORD
+
 if USE_DISCORD:
-    from discord_client import GLOBAL_INDENT, post_to_discord
+    from discord_client import post_to_discord, json_dumps
 
 
 COINALYZE_SECRET_API_KEY = config("COINALYZE_SECRET_API_KEY")
@@ -111,8 +112,9 @@ class CoinalyzeScanner:
         if USE_DISCORD and self.liquidations:
             threading.Thread(
                 target=post_to_discord,
-                args=(
-                    f"liquidations: {json.dumps([liquidation.to_dict() for liquidation in self.liquidations], indent=GLOBAL_INDENT)}",
+                kwargs=dict(
+                    messages=["liquidations:"]
+                    + [f"{json_dumps(liq.to_dict())}" for liq in self.liquidations]
                 ),
             ).start()
 

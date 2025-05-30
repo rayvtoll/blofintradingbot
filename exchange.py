@@ -13,7 +13,7 @@ from logger import logger
 from discord_client import USE_DISCORD
 
 if USE_DISCORD:
-    from discord_client import GLOBAL_INDENT, post_to_discord
+    from discord_client import post_to_discord, json_dumps
 
 # blofin
 BLOFIN_SECRET_KEY = config("BLOFIN_SECRET_KEY")
@@ -198,9 +198,10 @@ class Exchange:
                 if USE_DISCORD:
                     threading.Thread(
                         target=post_to_discord,
-                        args=(
-                            f"order: {json.dumps(order_info|order_params, indent=GLOBAL_INDENT)}",
-                            (
+                        kwargs=dict(
+                            messages=[f"order:"]
+                            + [f"{json_dumps(order_info|order_params)}"],
+                            at_everyone=(
                                 True
                                 if self.scanner.now.weekday() in TRADING_DAYS
                                 and self.scanner.now.hour in TRADING_HOURS

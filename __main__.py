@@ -16,7 +16,7 @@ if USE_DISCORD:
         MINIMAL_NR_OF_LIQUIDATIONS,
         N_MINUTES_TIMEDELTA,
     )
-    from discord_client import GLOBAL_INDENT, USE_DISCORD, post_to_discord
+    from discord_client import USE_DISCORD, post_to_discord, json_dumps
     from exchange import LEVERAGE, POSITION_PERCENTAGE, TRADING_DAYS, TRADING_HOURS
 
     DISCORD_SETTINGS = dict(
@@ -53,9 +53,10 @@ async def main() -> None:
         DISCORD_SETTINGS["symbols"] = scanner.symbols.split(",")
         threading.Thread(
             target=post_to_discord,
-            args=(
-                f"{info} with settings: {json.dumps(DISCORD_SETTINGS, indent=GLOBAL_INDENT)}",
-                True,
+            kwargs=dict(
+                messages=[f"{info} with settings:"]
+                + [f"{json_dumps(DISCORD_SETTINGS)}"],
+                at_everyone=True,
             ),
         ).start()
 
@@ -67,26 +68,31 @@ async def main() -> None:
                 symbols=["BTC/USDT:USDT"]
             )
             exchange.positions = [position.get("info", {}) for position in positions]
-            
+
             # get open orders and compare to exchange.open_orders
             open_orders = await exchange.exchange.fetch_open_orders(
                 params={"tpsl": True}
             )
             open_orders_info = [order.get("info", {}) for order in open_orders]
-            
+
             # only log and post to discord if there are changes
             if exchange.open_orders != open_orders_info:
                 exchange.open_orders = open_orders_info
-                open_positions_and_orders = {
-                    "open_positions": exchange.positions,
-                    "open_orders": exchange.open_orders,
-                }
+                open_positions_and_orders = (
+                    ["open_positions:"]
+                    + exchange.positions
+                    + ["open_orders:"]
+                    + exchange.open_orders
+                )
                 logger.info(f"{open_positions_and_orders=}")
                 if USE_DISCORD:
                     threading.Thread(
                         target=post_to_discord,
-                        args=(
-                            f"{json.dumps(open_positions_and_orders, indent=GLOBAL_INDENT)}",
+                        kwargs=dict(
+                            messages=[
+                                f"{json_dumps(open_p_and_r)}"
+                                for open_p_and_r in open_positions_and_orders
+                            ],
                         ),
                     ).start()
 
