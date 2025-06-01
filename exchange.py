@@ -174,7 +174,7 @@ class Exchange:
                     params={
                         "stopLoss": {
                             "triggerPrice": (
-                                round(self.last_candle.close * 0.995, 2)
+                                round(self.last_candle.close * 0.995, 1)
                                 if liquidation.direction == "long"
                                 else round(self.last_candle.close * 1.005, 1)
                             ),
@@ -182,7 +182,7 @@ class Exchange:
                         },
                         "takeProfit": {
                             "triggerPrice": (
-                                round(self.last_candle.close * 1.015, 2)
+                                round(self.last_candle.close * 1.015, 1)
                                 if liquidation.direction == "long"
                                 else round(self.last_candle.close * 0.985, 1)
                             ),
