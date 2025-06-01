@@ -5,8 +5,8 @@ import ccxt.pro as ccxt
 from copy import deepcopy
 from datetime import datetime, timedelta
 from decouple import config, Csv
+import requests
 from coinalyze_scanner import CoinalyzeScanner
-import json
 from misc import Candle, Liquidation
 from logger import logger
 
@@ -14,6 +14,13 @@ from discord_client import USE_DISCORD
 
 if USE_DISCORD:
     from discord_client import post_to_discord, json_dumps, USE_AT_EVERYONE
+
+USE_AUTO_JOURNALING = config("USE_AUTO_JOURNALING", cast=bool, default=False)
+if USE_AUTO_JOURNALING:
+    JOURNAL_HOST_AND_PORT = config(
+        "JOURNAL_HOST_AND_PORT", default="http://127.0.0.1:8000"
+    )
+    JOURNALING_API_KEY = config("JOURNALING_API_KEY")
 
 # blofin
 BLOFIN_SECRET_KEY = config("BLOFIN_SECRET_KEY")
@@ -209,6 +216,36 @@ class Exchange:
                             ),
                         ),
                     ).start()
+
+                if USE_AUTO_JOURNALING:
+                    try:
+                        data = dict(
+                            start=f"{self.scanner.now}",
+                            entry_price=self.scanner.last_candle.close,
+                            side=(liquidation.direction).upper(),
+                            amount=amount,
+                            take_profit_price=order_params["params"]["takeProfit"][
+                                "triggerPrice"
+                            ],
+                            stop_loss_price=order_params["params"]["stopLoss"][
+                                "triggerPrice"
+                            ],
+                            liquidation_amount=int(liquidation.amount),
+                            nr_of_liquidations=liquidation.nr_of_liquidations,
+                        )
+                        response = requests.post(
+                            f"{JOURNAL_HOST_AND_PORT}/api/positions/",
+                            headers={"Authorization": f"Api-Key {JOURNALING_API_KEY}"},
+                            data=data,
+                        )
+                        response.raise_for_status()
+                        logger.info(f"Position journaled: {response.json()}")
+                    except Exception as e:
+                        logger.error(
+                            f"Error journaling position 1/2: {response.content=}"
+                        )
+                        logger.error(f"Error journaling position 2/2: {e}")
+
                 await sleep(2)
                 # TODO: add take profit by limit order instead of market order
             except Exception as e:

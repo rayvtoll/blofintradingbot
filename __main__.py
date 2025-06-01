@@ -4,7 +4,6 @@ from asyncio import run, sleep
 from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
 from datetime import datetime
 from exchange import Exchange
-import json
 from logger import logger
 from misc import Liquidation
 import threading
