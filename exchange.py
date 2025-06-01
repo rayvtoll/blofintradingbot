@@ -13,7 +13,7 @@ from logger import logger
 from discord_client import USE_DISCORD
 
 if USE_DISCORD:
-    from discord_client import post_to_discord, json_dumps
+    from discord_client import post_to_discord, json_dumps, USE_AT_EVERYONE
 
 # blofin
 BLOFIN_SECRET_KEY = config("BLOFIN_SECRET_KEY")
@@ -204,6 +204,7 @@ class Exchange:
                                 True
                                 if self.scanner.now.weekday() in TRADING_DAYS
                                 and self.scanner.now.hour in TRADING_HOURS
+                                and USE_AT_EVERYONE
                                 else False
                             ),
                         ),

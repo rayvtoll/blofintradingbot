@@ -11,6 +11,7 @@ USE_DISCORD = config("USE_DISCORD", cast=bool, default=False)
 if USE_DISCORD:
     DISCORD_CHANNEL_ID = config("DISCORD_CHANNEL_ID", cast=int)
     DISCORD_PRIVATE_KEY = config("DISCORD_PRIVATE_KEY")
+    USE_AT_EVERYONE = config("USE_AT_EVERYONE", cast=bool, default=False)
 
 
 def json_dumps(obj: dict | list) -> str:

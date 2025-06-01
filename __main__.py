@@ -16,7 +16,7 @@ if USE_DISCORD:
         MINIMAL_NR_OF_LIQUIDATIONS,
         N_MINUTES_TIMEDELTA,
     )
-    from discord_client import USE_DISCORD, post_to_discord, json_dumps
+    from discord_client import USE_DISCORD, post_to_discord, json_dumps, USE_AT_EVERYONE
     from exchange import LEVERAGE, POSITION_PERCENTAGE, TRADING_DAYS, TRADING_HOURS
 
     DISCORD_SETTINGS = dict(
@@ -55,7 +55,7 @@ async def main() -> None:
             target=post_to_discord,
             kwargs=dict(
                 messages=[f"{info} with settings:\n{json_dumps(DISCORD_SETTINGS)}"],
-                at_everyone=True,
+                at_everyone=True if USE_AT_EVERYONE else False,
             ),
         ).start()
 
