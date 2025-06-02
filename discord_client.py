@@ -8,6 +8,7 @@ from logger import logger
 
 GLOBAL_INDENT = config("GLOBAL_INDENT", cast=int, default=4)
 USE_DISCORD = config("USE_DISCORD", cast=bool, default=False)
+logger.info(f"{USE_DISCORD=}")
 if USE_DISCORD:
     DISCORD_CHANNEL_ID = config("DISCORD_CHANNEL_ID", cast=int)
     DISCORD_PRIVATE_KEY = config("DISCORD_PRIVATE_KEY")

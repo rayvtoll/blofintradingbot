@@ -16,6 +16,7 @@ if USE_DISCORD:
     from discord_client import post_to_discord, json_dumps, USE_AT_EVERYONE
 
 USE_AUTO_JOURNALING = config("USE_AUTO_JOURNALING", cast=bool, default=False)
+logger.info(f"{USE_AUTO_JOURNALING=}")
 if USE_AUTO_JOURNALING:
     JOURNAL_HOST_AND_PORT = config(
         "JOURNAL_HOST_AND_PORT", default="http://127.0.0.1:8000"
@@ -222,6 +223,16 @@ class Exchange:
                         data = dict(
                             start=f"{self.scanner.now}",
                             entry_price=self.scanner.last_candle.close,
+                            candles_before_entry=int(
+                                round(
+                                    (
+                                        self.scanner.now
+                                        - datetime.fromtimestamp(liquidation.time)
+                                    ).seconds
+                                    / 300,  # 5 minutes
+                                    0,
+                                )
+                            ),
                             side=(liquidation.direction).upper(),
                             amount=amount,
                             take_profit_price=order_params["params"]["takeProfit"][

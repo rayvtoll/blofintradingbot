@@ -1,7 +1,6 @@
-from datetime import datetime
 import logging
 
-logger = logging.getLogger("scalp_assist")
+logger = logging.getLogger("Blofin Trading Bot")
 logger.setLevel(logging.INFO)
 
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
