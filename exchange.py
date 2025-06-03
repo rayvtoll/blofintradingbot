@@ -223,7 +223,7 @@ class Exchange:
                     try:
                         data = dict(
                             start=f"{self.scanner.now}",
-                            entry_price=self.scanner.last_candle.close,
+                            entry_price=self.last_candle.close,
                             candles_before_entry=int(
                                 round(
                                     (
