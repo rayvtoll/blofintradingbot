@@ -219,6 +219,7 @@ class Exchange:
                     ).start()
 
                 if USE_AUTO_JOURNALING:
+                    response = None
                     try:
                         data = dict(
                             start=f"{self.scanner.now}",
@@ -234,7 +235,7 @@ class Exchange:
                                 )
                             ),
                             side=(liquidation.direction).upper(),
-                            amount=amount,
+                            amount=amount / 1000,
                             take_profit_price=order_params["params"]["takeProfit"][
                                 "triggerPrice"
                             ],
@@ -253,7 +254,7 @@ class Exchange:
                         logger.info(f"Position journaled: {response.json()}")
                     except Exception as e:
                         logger.error(
-                            f"Error journaling position 1/2: {response.content=}"
+                            f"Error journaling position 1/2: {response.content if response else 'No response'}"
                         )
                         logger.error(f"Error journaling position 2/2: {e}")
 
