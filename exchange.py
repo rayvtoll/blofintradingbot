@@ -232,7 +232,7 @@ class Exchange:
                                     ).seconds
                                     / 300,  # 5 minutes
                                     0,
-                                )
+                                ) - 1 # number of candles before entry, not distance
                             ),
                             side=(liquidation.direction).upper(),
                             amount=amount / 1000,
