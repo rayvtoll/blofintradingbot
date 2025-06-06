@@ -99,7 +99,7 @@ class CoinalyzeScanner:
                 nr_of_liquidations=nr_of_liquidations,
                 candle=candle,
             )
-            self.liquidations.append(liquidation)
+            self.liquidations.insert(0, liquidation)
         if total_short > MINIMAL_LIQUIDATION:
             liquidation = Liquidation(
                 amount=total_short,
@@ -108,7 +108,7 @@ class CoinalyzeScanner:
                 nr_of_liquidations=nr_of_liquidations,
                 candle=candle,
             )
-            self.liquidations.append(liquidation)
+            self.liquidations.insert(0, liquidation)
         if USE_DISCORD and self.liquidations:
             threading.Thread(
                 target=post_to_discord,

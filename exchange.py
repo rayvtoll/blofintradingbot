@@ -147,21 +147,33 @@ class Exchange:
                 symbols=["BTC/USDT:USDT"]
             )
 
+            for position in self.positions:
+                if position.get("side") != liquidation.direction:
+                    continue
+                
+                if (
+                    self.scanner.now.weekday() not in TRADING_DAYS
+                    and self.scanner.now.hour not in TRADING_HOURS
+                ):
+                    logger.info(
+                        f"Outside trading hours and days, not placing a second order for {liquidation.direction} position"
+                    )
+                    return 0
+                
+                if position.get("contracts") > 0.1:
+                    logger.info(
+                        f"Already in position with {position.get('contracts')} contracts, skipping order"
+                    )
+                    return 0
+
             # outside trading hours and days, place a small order, inside trading hours
-            # and days, place a full order unless there already is a full position,
-            # then also place a small order
+            # and days, place a full order
             amount = (
                 self.position_size
                 if self.scanner.now.weekday() in TRADING_DAYS
                 and self.scanner.now.hour in TRADING_HOURS
                 else 0.1
             )
-            for position in self.positions:
-                if (
-                    position.get("side") == liquidation.direction
-                    and position.get("contracts") > 1
-                ):
-                    amount = 0.1
 
             # place the order
             logger.info(f"Placing {liquidation.direction} order")
@@ -232,7 +244,8 @@ class Exchange:
                                     ).seconds
                                     / 300,  # 5 minutes
                                     0,
-                                ) - 1 # number of candles before entry, not distance
+                                )
+                                - 1  # number of candles before entry, not distance
                             ),
                             side=(liquidation.direction).upper(),
                             amount=amount / 1000,
