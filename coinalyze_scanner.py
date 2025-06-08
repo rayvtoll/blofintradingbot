@@ -1,9 +1,8 @@
 from datetime import datetime, timedelta
 from decouple import config
 from functools import cached_property
-import json
 from logger import logger
-from misc import Candle, Liquidation
+from misc import Candle, Liquidation, LiquidationSet
 import requests
 import threading
 from typing import List
@@ -18,14 +17,9 @@ COINALYZE_SECRET_API_KEY = config("COINALYZE_SECRET_API_KEY")
 COINALYZE_LIQUIDATION_URL = "https://api.coinalyze.net/v1/liquidation-history"
 FUTURE_MARKETS_URL = "https://api.coinalyze.net/v1/future-markets"
 
-MINIMAL_NR_OF_LIQUIDATIONS = config("MINIMAL_NR_OF_LIQUIDATIONS", default=3, cast=int)
-logger.info(f"{MINIMAL_NR_OF_LIQUIDATIONS=}")
 
 N_MINUTES_TIMEDELTA = config("N_MINUTES_TIMEDELTA", default=5, cast=int)
 logger.info(f"{N_MINUTES_TIMEDELTA=}")
-
-MINIMAL_LIQUIDATION = config("MINIMAL_LIQUIDATION", default=10_000, cast=int)
-logger.info(f"{MINIMAL_LIQUIDATION=}")
 
 INTERVAL = config("INTERVAL", default="5min")
 logger.info(f"{INTERVAL=}")
@@ -35,9 +29,9 @@ class CoinalyzeScanner:
     """Scans coinalyze to notify for changes in open interest and liquidations through
     text to speech"""
 
-    def __init__(self, now: datetime, liquidations: List[Liquidation]) -> None:
+    def __init__(self, now: datetime, liquidation_set: LiquidationSet) -> None:
         self.now = now
-        self.liquidations = liquidations
+        self.liquidation_set = liquidation_set
 
     @property
     def params(self) -> dict:
@@ -85,13 +79,9 @@ class CoinalyzeScanner:
             total_short += short
             if short > 100:
                 nr_of_liquidations += 1
-        if (
-            nr_of_liquidations < MINIMAL_NR_OF_LIQUIDATIONS
-            and max(total_long, total_short) < 100_000
-        ):
-            return
 
-        if total_long > MINIMAL_LIQUIDATION:
+        discord_liquidations: List[Liquidation] = []
+        if total_long:
             liquidation = Liquidation(
                 amount=total_long,
                 direction="long",
@@ -99,8 +89,9 @@ class CoinalyzeScanner:
                 nr_of_liquidations=nr_of_liquidations,
                 candle=candle,
             )
-            self.liquidations.insert(0, liquidation)
-        if total_short > MINIMAL_LIQUIDATION:
+            self.liquidation_set.liquidations.insert(0, liquidation)
+            discord_liquidations.append(liquidation)
+        if total_short:
             liquidation = Liquidation(
                 amount=total_short,
                 direction="short",
@@ -108,13 +99,17 @@ class CoinalyzeScanner:
                 nr_of_liquidations=nr_of_liquidations,
                 candle=candle,
             )
-            self.liquidations.insert(0, liquidation)
-        if USE_DISCORD and self.liquidations:
+            self.liquidation_set.liquidations.insert(0, liquidation)
+            discord_liquidations.append(liquidation)
+        if USE_DISCORD and discord_liquidations:
             threading.Thread(
                 target=post_to_discord,
                 kwargs=dict(
                     messages=["liquidations:"]
-                    + [f"{json_dumps(liq.to_dict())}" for liq in self.liquidations]
+                    + [
+                        json_dumps(liquidation.to_dict())
+                        for liquidation in discord_liquidations
+                    ],
                 ),
             ).start()
 

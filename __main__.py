@@ -5,15 +5,17 @@ from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
 from datetime import datetime
 from exchange import Exchange
 from logger import logger
-from misc import Liquidation
+from misc import Liquidation, LiquidationSet
 import threading
 
 if USE_DISCORD:
     from coinalyze_scanner import (
         INTERVAL,
-        MINIMAL_LIQUIDATION,
-        MINIMAL_NR_OF_LIQUIDATIONS,
         N_MINUTES_TIMEDELTA,
+    )
+    from misc import (
+        MINIMAL_NR_OF_LIQUIDATIONS,
+        MINIMAL_LIQUIDATION,
     )
     from discord_client import USE_DISCORD, post_to_discord, json_dumps, USE_AT_EVERYONE
     from exchange import LEVERAGE, POSITION_PERCENTAGE, TRADING_DAYS, TRADING_HOURS
@@ -30,17 +32,18 @@ if USE_DISCORD:
     )
 
 LIQUIDATIONS: List[Liquidation] = []
+LIQUIDATION_SET: LiquidationSet = LiquidationSet(liquidations=LIQUIDATIONS)
 
 
 async def main() -> None:
     first_run = True
 
     # enable scanner
-    scanner = CoinalyzeScanner(datetime.now(), LIQUIDATIONS)
+    scanner = CoinalyzeScanner(datetime.now(), LIQUIDATION_SET)
     await scanner.set_symbols()
 
     # enable exchange
-    exchange = Exchange(LIQUIDATIONS, scanner)
+    exchange = Exchange(LIQUIDATION_SET, scanner)
 
     # clear the terminal and start the bot
     info = "Starting / Restarting the bot"
@@ -62,40 +65,45 @@ async def main() -> None:
         now = datetime.now()
         if now.minute == 58 and now.second == 0:
             # get positions info and set exchange.positions
-            positions = await exchange.exchange.fetch_positions(
-                symbols=["BTC/USDT:USDT"]
-            )
-            exchange.positions = [position.get("info", {}) for position in positions]
+            try:
+                positions = await exchange.exchange.fetch_positions(
+                    symbols=["BTC/USDT:USDT"]
+                )
+                exchange.positions = [
+                    position.get("info", {}) for position in positions
+                ]
+            except Exception as e:
+                logger.error(f"Error fetching positions: {e}")
+                exchange.positions = []
 
             # get open orders and compare to exchange.open_orders
-            open_orders = await exchange.exchange.fetch_open_orders(
-                params={"tpsl": True}
-            )
-            open_orders_info = [order.get("info", {}) for order in open_orders]
+            try:
+                open_orders = await exchange.exchange.fetch_open_orders(
+                    params={"tpsl": True}
+                )
+                open_orders_info = [order.get("info", {}) for order in open_orders]
+            except Exception as e:
+                logger.error(f"Error fetching open orders: {e}")
+                open_orders_info = []
 
             # only log and post to discord if there are changes
             if exchange.open_orders != open_orders_info:
                 exchange.open_orders = open_orders_info
                 open_positions_and_orders = (
                     ["open_positions:"]
-                    + exchange.positions
+                    + [json_dumps(position) for position in exchange.positions]
                     + ["open_orders:"]
-                    + exchange.open_orders
+                    + [json_dumps(order) for order in exchange.open_orders]
                 )
                 logger.info(f"{open_positions_and_orders=}")
                 if USE_DISCORD:
                     threading.Thread(
                         target=post_to_discord,
-                        kwargs=dict(
-                            messages=[
-                                f"{json_dumps(open_p_and_r)}"
-                                for open_p_and_r in open_positions_and_orders
-                            ],
-                        ),
+                        kwargs=dict(messages=open_positions_and_orders),
                     ).start()
 
             # prevent double processing
-            await sleep(0.9)
+            await sleep(0.99)
 
         if (now.minute % 5 == 0 and now.second == 0) or first_run:
             first_run = False
@@ -110,13 +118,14 @@ async def main() -> None:
                 exchange.last_candle,
                 await scanner.handle_coinalyze_url(COINALYZE_LIQUIDATION_URL),
             )
-            logger.info(f"{LIQUIDATIONS=}")
+            if LIQUIDATIONS:
+                logger.info(f"{LIQUIDATIONS=}")
 
             # prevent double processing
-            await sleep(0.9)
+            await sleep(0.99)
 
         # sleep some just in case
-        await sleep(0.1)
+        await sleep(0.01)
 
 
 if __name__ == "__main__":

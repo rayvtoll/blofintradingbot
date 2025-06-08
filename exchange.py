@@ -3,11 +3,11 @@ import threading
 from typing import List
 import ccxt.pro as ccxt
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime
 from decouple import config, Csv
 import requests
 from coinalyze_scanner import CoinalyzeScanner
-from misc import Candle, Liquidation
+from misc import Candle, Liquidation, LiquidationSet
 from logger import logger
 
 from discord_client import USE_DISCORD
@@ -43,7 +43,7 @@ class Exchange:
     """Exchange class to handle the exchange"""
 
     def __init__(
-        self, liquidations: List[Liquidation], scanner: CoinalyzeScanner
+        self, liquidation_set: LiquidationSet, scanner: CoinalyzeScanner
     ) -> None:
         self.exchange = ccxt.blofin(
             config={
@@ -52,7 +52,7 @@ class Exchange:
                 "password": BLOFIN_PASSPHRASE,
             }
         )
-        self.liquidations: List[Liquidation] = liquidations
+        self.liquidation_set: LiquidationSet = liquidation_set
         self.positions: List[dict] = []
         self.open_orders: List[dict] = []
         self.scanner: CoinalyzeScanner = scanner
@@ -94,13 +94,19 @@ class Exchange:
             total_balance = balance.get("USDT", {}).get("total", 1)
             usdt_size = (total_balance / (0.5 * LEVERAGE)) * POSITION_PERCENTAGE
 
-            self._position_size = round(
+            position_size = round(
                 usdt_size / self.last_candle.close * LEVERAGE * 1000, 1
             )
         except Exception as e:
-            self._position_size = 0.1
+            position_size = 0.1
             logger.error(f"Error setting position size: {e}")
-        logger.info(f"{self._position_size=}")
+        if not hasattr(self, "_position_size"):
+            self._position_size = position_size
+            logger.info(f"Initial {self._position_size=}")
+            return
+        if position_size != self._position_size:
+            logger.info(f"{position_size=}")
+            self._position_size = position_size
 
     @property
     def position_size(self) -> int:
@@ -115,10 +121,17 @@ class Exchange:
         if await self.set_last_candle():
             return 1
 
-        # loop over detected liquidations
-        for liquidation in deepcopy(self.liquidations):
+        # remove old liquidations if they are older than 35 minutes
+        self.liquidation_set.remove_old_liquidations_if_needed()
 
-            # if order is created, remove the liquidations with the same direction from
+        # loop over detected liquidations
+        for liquidation in deepcopy(self.liquidation_set.liquidations):
+
+            # if liquidation is already used for trade, skip it
+            if liquidation.used_for_trade:
+                continue
+
+            # if order is created, disable the liquidations with the same direction from
             # the list and exit loop
             if await self.apply_strategy(liquidation):
                 break
@@ -130,18 +143,16 @@ class Exchange:
     async def apply_strategy(self, liquidation: Liquidation) -> int:
         """Apply the strategy for the exchange"""
 
-        # remove liquidations older than 35 minutes
-        if liquidation.time < (datetime.now() - timedelta(minutes=35)).timestamp():
-            self.liquidations.remove(liquidation)
-            return 0
-
         # check if reaction to liquidation is strong enough to place an order
-        if (
-            liquidation.direction == "long"
-            and self.last_candle.close > liquidation.candle.high
-        ) or (
-            liquidation.direction == "short"
-            and self.last_candle.close < liquidation.candle.low
+        if liquidation.meets_criteria and (
+            (
+                liquidation.direction == "long"
+                and self.last_candle.close > liquidation.candle.high
+            )
+            or (
+                liquidation.direction == "short"
+                and self.last_candle.close < liquidation.candle.low
+            )
         ):
             self.positions = await self.exchange.fetch_positions(
                 symbols=["BTC/USDT:USDT"]
@@ -150,19 +161,21 @@ class Exchange:
             for position in self.positions:
                 if position.get("side") != liquidation.direction:
                     continue
-                
+
                 if (
                     self.scanner.now.weekday() not in TRADING_DAYS
                     and self.scanner.now.hour not in TRADING_HOURS
                 ):
                     logger.info(
-                        f"Outside trading hours and days, not placing a second order for {liquidation.direction} position"
+                        f"Outside trading hours and days, not placing another {liquidation.direction} order."
                     )
                     return 0
-                
-                if position.get("contracts") > 0.1:
+
+                if (
+                    position.get("contracts") > 0.1
+                ):  # TODO: this will no longer work if also implementing 1m strategy
                     logger.info(
-                        f"Already in position with {position.get('contracts')} contracts, skipping order"
+                        f"Already in {liquidation.direction} position with {position.get('contracts')} contracts, skipping order"
                     )
                     return 0
 
@@ -178,8 +191,6 @@ class Exchange:
             # place the order
             logger.info(f"Placing {liquidation.direction} order")
 
-            if await self.set_last_candle():
-                return 1
             await self.set_leverage(
                 symbol="BTC/USDT:USDT",
                 leverage=LEVERAGE,
@@ -255,7 +266,9 @@ class Exchange:
                             stop_loss_price=order_params["params"]["stopLoss"][
                                 "triggerPrice"
                             ],
-                            liquidation_amount=int(liquidation.amount),
+                            liquidation_amount=int(
+                                self.liquidation_set.total_amount(liquidation.direction)
+                            ),
                             nr_of_liquidations=liquidation.nr_of_liquidations,
                         )
                         response = requests.post(
@@ -271,15 +284,11 @@ class Exchange:
                         )
                         logger.error(f"Error journaling position 2/2: {e}")
 
-                await sleep(2)
                 # TODO: add take profit by limit order instead of market order
             except Exception as e:
                 logger.error(f"Error placing order: {e}")
                 return 1
 
-            # remove similar liquidations
-            for liq in deepcopy(self.liquidations):
-                if liq.direction == liquidation.direction:
-                    self.liquidations.remove(liq)
+            self.liquidation_set.mark_liquidations_as_used(liquidation.direction)
             return 1
         return 0
