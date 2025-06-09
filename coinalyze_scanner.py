@@ -81,7 +81,7 @@ class CoinalyzeScanner:
                 nr_of_liquidations += 1
 
         discord_liquidations: List[Liquidation] = []
-        if total_long:
+        if total_long > 1000:
             liquidation = Liquidation(
                 amount=total_long,
                 direction="long",
@@ -91,7 +91,7 @@ class CoinalyzeScanner:
             )
             self.liquidation_set.liquidations.insert(0, liquidation)
             discord_liquidations.append(liquidation)
-        if total_short:
+        if total_short > 1000:
             liquidation = Liquidation(
                 amount=total_short,
                 direction="short",
