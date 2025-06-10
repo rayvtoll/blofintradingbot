@@ -3,7 +3,7 @@ from discord_client import USE_DISCORD
 from asyncio import run, sleep
 from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
 from datetime import datetime
-from exchange import Exchange
+from exchange import Exchange, TICKER
 from logger import logger
 from misc import Liquidation, LiquidationSet
 import threading
@@ -44,6 +44,12 @@ async def main() -> None:
 
     # enable exchange
     exchange = Exchange(LIQUIDATION_SET, scanner)
+    for direction in ["long", "short"]:
+        await exchange.set_leverage(
+            symbol=TICKER,
+            leverage=LEVERAGE,
+            direction=direction,
+        )
 
     # clear the terminal and start the bot
     info = "Starting / Restarting the bot"
@@ -67,7 +73,7 @@ async def main() -> None:
             # get positions info and set exchange.positions
             try:
                 positions = await exchange.exchange.fetch_positions(
-                    symbols=["BTC/USDT:USDT"]
+                    symbols=[TICKER]
                 )
                 exchange.positions = [
                     position.get("info", {}) for position in positions
