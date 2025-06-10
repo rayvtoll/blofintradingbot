@@ -46,7 +46,7 @@ class Liquidation:
         ):
             return False
 
-        return self.amount > MINIMAL_LIQUIDATION and not self.used_for_trade
+        return self.amount > MINIMAL_LIQUIDATION
 
     def to_dict(self) -> dict:
         """Convert the Liquidation instance to a json dumpable dictionary."""
@@ -93,7 +93,8 @@ class LiquidationSet:
         """Remove liquidations older than 35 minutes."""
 
         for liquidation in self.liquidations:
-            if liquidation.time < (datetime.now() - timedelta(minutes=35)).timestamp():
+            now_rounded = datetime.now().replace(second=0, microsecond=0)
+            if liquidation.time < (now_rounded - timedelta(minutes=30)).timestamp():
                 self.liquidations.remove(liquidation)
 
     def mark_liquidations_as_used(self, direction: str) -> None:

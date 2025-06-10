@@ -119,10 +119,9 @@ class Exchange:
     async def run_loop(self) -> int:
         """Run the loop for the exchange"""
 
-        # check if the last candle can be set, if not, return 1
-        # this is to prevent the program from crashing if the exchange is down
-        if await self.set_last_candle():
-            return 1
+        # get last bid & ask from ticker
+        ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
+        bid, ask = ticker_data["bid"], ticker_data["ask"]
 
         # remove old liquidations if they are older than 35 minutes
         self.liquidation_set.remove_old_liquidations_if_needed()
@@ -134,28 +133,31 @@ class Exchange:
             if liquidation.used_for_trade:
                 continue
 
+            # currently 3 liquidations and a total of > 10k or 1 liquidation and a total
+            # of > 100k
+            if not liquidation.meets_criteria:
+                continue
+
             # if order is created, disable the liquidations with the same direction from
             # the list and exit loop
-            if await self.apply_strategy(liquidation):
+            if await self.apply_strategy(liquidation, bid, ask):
                 break
 
-        # to prevent delay new orders, set the position size at the end of the loop
+        # to prevent delay new orders, set the position size and last candle at the end
+        # of the loop
+        await self.set_last_candle()
         await self.set_position_size()
+
         return 0
 
-    async def apply_strategy(self, liquidation: Liquidation) -> int:
+    async def apply_strategy(
+        self, liquidation: Liquidation, bid: float, ask: float
+    ) -> int:
         """Apply the strategy for the exchange"""
 
         # check if reaction to liquidation is strong enough to place an order
-        if liquidation.meets_criteria and (
-            (
-                liquidation.direction == "long"
-                and self.last_candle.close > liquidation.candle.high
-            )
-            or (
-                liquidation.direction == "short"
-                and self.last_candle.close < liquidation.candle.low
-            )
+        if (liquidation.direction == "long" and bid > liquidation.candle.high) or (
+            liquidation.direction == "short" and ask < liquidation.candle.low
         ):
             self.positions = await self.exchange.fetch_positions(symbols=[TICKER])
 
@@ -165,7 +167,7 @@ class Exchange:
 
                 if (
                     self.scanner.now.weekday() not in TRADING_DAYS
-                    and self.scanner.now.hour not in TRADING_HOURS
+                    or self.scanner.now.hour not in TRADING_HOURS
                 ):
                     logger.info(
                         f"Outside trading hours and days, not placing another {liquidation.direction} order."
@@ -184,9 +186,6 @@ class Exchange:
             logger.info(f"Placing {liquidation.direction} order")
 
             try:
-                ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
-                bid, ask = ticker_data["bid"], ticker_data["ask"]
-
                 # order param variables
                 side = "buy" if liquidation.direction == "long" else "sell"
                 price = bid if liquidation.direction == "long" else ask
@@ -202,7 +201,7 @@ class Exchange:
                 )
                 # outside trading hours and days, place a small order, inside trading hours
                 # and days, place a full order
-                amount = (
+                amount_left = (
                     self.position_size
                     if self.scanner.now.weekday() in TRADING_DAYS
                     and self.scanner.now.hour in TRADING_HOURS
@@ -213,7 +212,7 @@ class Exchange:
                     type="limit",
                     price=price,
                     side=side,
-                    amount=amount,
+                    amount=amount_left,
                     params=dict(
                         stopLoss=dict(
                             triggerPrice=stoploss_price,
@@ -226,9 +225,9 @@ class Exchange:
                         marginMode="isolated",
                         postOnly=True,
                         positionSide=liquidation.direction,
+                        timeInForce="PO",  # Post Only
                     ),
                 )
-                traded_amount = 0.0
 
                 try:
                     order = await self.exchange.create_order(**initial_order_params)
@@ -236,7 +235,7 @@ class Exchange:
                     logger.error(f"Error placing order: {e}")
                     order = None
 
-                while amount - traded_amount > 0.1:
+                while amount_left > 0.1:
                     ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
                     new_bid, new_ask = ticker_data["bid"], ticker_data["ask"]
                     if (new_bid, new_ask) != (bid, ask):
@@ -264,11 +263,10 @@ class Exchange:
                                     logger.info(
                                         f"Order {order['id']} was updated: {updated_order['info']}"
                                     )
-                                    traded_amount += float(
+                                    amount_left -= float(
                                         updated_order["info"]["filledSize"]
                                     )
                                     break
-                        amount_left = amount - traded_amount
                         if amount_left > 0.1:
 
                             try:
@@ -280,6 +278,9 @@ class Exchange:
                                 order = await self.exchange.create_order(
                                     **initial_order_params
                                     | dict(price=price, amount=amount_left)
+                                )
+                                logger.info(
+                                    f"Refreshed order placed: {order.get('info', {})}"
                                 )
                             except Exception as e:
                                 logger.error(f"Error placing order: {e}")
@@ -321,7 +322,7 @@ class Exchange:
                                 - 1  # number of candles before entry, not distance
                             ),
                             side=(liquidation.direction).upper(),
-                            amount=amount / 1000,
+                            amount=amount_left / 1000,
                             take_profit_price=initial_order_params["params"][
                                 "takeProfit"
                             ]["triggerPrice"],
