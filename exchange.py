@@ -225,6 +225,7 @@ class Exchange:
                         ),
                         marginMode="isolated",
                         postOnly=True,
+                        positionSide=liquidation.direction,
                     ),
                 )
                 traded_amount = 0.0
