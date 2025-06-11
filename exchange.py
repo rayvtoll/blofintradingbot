@@ -1,9 +1,7 @@
-from asyncio import sleep
 import threading
 from typing import List
 import ccxt.pro as ccxt
-from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from decouple import config, Csv
 import requests
 from coinalyze_scanner import CoinalyzeScanner
@@ -40,6 +38,10 @@ TRADING_DAYS = config("TRADING_DAYS", cast=Csv(int), default=[])
 logger.info(f"{TRADING_DAYS=}")
 TRADING_HOURS = config("TRADING_HOURS", cast=Csv(int), default=[])
 logger.info(f"{TRADING_HOURS=}")
+MINIMAL_NR_OF_LIQUIDATIONS = config("MINIMAL_NR_OF_LIQUIDATIONS", default=3, cast=int)
+logger.info(f"{MINIMAL_NR_OF_LIQUIDATIONS=}")
+MINIMAL_LIQUIDATION = config("MINIMAL_LIQUIDATION", default=10_000, cast=int)
+logger.info(f"{MINIMAL_LIQUIDATION=}")
 
 
 class Exchange:
@@ -116,31 +118,38 @@ class Exchange:
         """Get the position size for the exchange"""
         return self._position_size
 
-    async def run_loop(self) -> int:
+    async def run_loop(self):
         """Run the loop for the exchange"""
 
         # get last bid & ask from ticker
         ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
         bid, ask = ticker_data["bid"], ticker_data["ask"]
 
-        # remove old liquidations if they are older than 35 minutes
-        self.liquidation_set.remove_old_liquidations_if_needed()
+        # remove old liquidations if they are older than 60 minutes
+        self.liquidation_set.remove_old_liquidations(self.scanner.now)
 
         # loop over detected liquidations
-        for liquidation in deepcopy(self.liquidation_set.liquidations):
+        for liquidation in self.liquidation_set.liquidations:
 
             # if liquidation is already used for trade, skip it
             if liquidation.used_for_trade:
                 continue
 
-            # currently 3 liquidations and a total of > 10k or 1 liquidation and a total
-            # of > 100k
-            if not liquidation.meets_criteria:
+            # if liquidation is not valid, skip it
+            if not await self.liquidation_is_valid(liquidation):
                 continue
 
-            # if order is created, disable the liquidations with the same direction from
-            # the list and exit loop
-            if await self.apply_strategy(liquidation, bid, ask):
+            # if reaction to liquidation is not strong, skip it
+            if not await self.reaction_to_liquidation_is_strong(liquidation, bid, ask):
+                continue
+
+            positions = await self.exchange.fetch_positions(symbols=[TICKER])
+
+            # if order is created exit loop
+            if await self.apply_live_strategy(positions, liquidation, bid, ask):
+                break
+
+            if await self.journaling_strategy(positions, liquidation, bid, ask):
                 break
 
         # to prevent delay new orders, set the position size and last candle at the end
@@ -148,209 +157,245 @@ class Exchange:
         await self.set_last_candle()
         await self.set_position_size()
 
-        return 0
-
-    async def apply_strategy(
+    async def reaction_to_liquidation_is_strong(
         self, liquidation: Liquidation, bid: float, ask: float
-    ) -> int:
-        """Apply the strategy for the exchange"""
-
-        # check if reaction to liquidation is strong enough to place an order
+    ) -> bool:
+        """Check if the reaction to the liquidation is strong enough to place an order"""
         if (liquidation.direction == "long" and bid > liquidation.candle.high) or (
             liquidation.direction == "short" and ask < liquidation.candle.low
         ):
-            self.positions = await self.exchange.fetch_positions(symbols=[TICKER])
+            return True
+        return False
 
-            for position in self.positions:
-                if position.get("side") != liquidation.direction:
-                    continue
+    async def liquidation_is_valid(self, liquidation: Liquidation) -> bool:
+        """Check if the liquidation is valid for trading"""
+        # currently 3 liquidations and a total of > 10k OR 1 liquidation and a total
+        # of > 100k
+        if (
+            liquidation.nr_of_liquidations < MINIMAL_NR_OF_LIQUIDATIONS
+            and liquidation.amount < 100_000
+        ) or liquidation.amount < MINIMAL_LIQUIDATION:
+            return False
+        return True
 
-                if (
-                    self.scanner.now.weekday() not in TRADING_DAYS
-                    or self.scanner.now.hour not in TRADING_HOURS
-                ):
-                    logger.info(
-                        f"Outside trading hours and days, not placing another {liquidation.direction} order."
-                    )
-                    return 0
+    async def journaling_strategy(
+        self, positions: List[dict], liquidation: Liquidation, bid: float, ask: float
+    ) -> int:
+        """Apply the journaling strategy to create datapoints for the journal with
+        minimal risk"""
 
-                if (
-                    position.get("contracts") > 0.1
-                ):  # TODO: this will no longer work if also implementing 1m strategy
-                    logger.info(
-                        f"Already in {liquidation.direction} position with {position.get('contracts')} contracts, skipping order"
-                    )
-                    return 0
+        for position in positions:
+            if position.get("side") == liquidation.direction:
+                logger.info(
+                    f"Already in {liquidation.direction} position. Skipping order for journaling strategy."
+                )
+                return 0  # already in position, skip order
 
-            # place the order
-            logger.info(f"Placing {liquidation.direction} order")
+        return await self.place_order(
+            amount_left=0.1,  # small order for journaling
+            liquidation=liquidation,
+            bid=bid,
+            ask=ask,
+        )
+
+    async def apply_live_strategy(
+        self, positions: List[dict], liquidation: Liquidation, bid: float, ask: float
+    ) -> int:
+        """Apply the live strategy during trading hours and days"""
+        
+        # check if we are in trading hours and days
+        if (
+            self.scanner.now.weekday() not in TRADING_DAYS
+            or self.scanner.now.hour not in TRADING_HOURS
+        ):
+            return 0
+
+        # check if liquidation is too old for live strategy
+        now_rounded = self.scanner.now.replace(second=0, microsecond=0)
+        if liquidation.time < (now_rounded - timedelta(minutes=30)).timestamp():
+            return 0
+
+        for position in positions:
+            if position.get("side") != liquidation.direction:
+                continue
+            
+            # check if there is another journaling position or a live strategy position
+            if (
+                position.get("contracts") > 0.1
+            ):  # TODO: this will no longer work if also implementing 1m strategy
+                logger.info(
+                    f"Already in {liquidation.direction} position with {position.get('contracts')} contracts, skipping order for live strategy"
+                )
+                return 0
+
+        return await self.place_order(
+            amount_left=self.position_size,
+            liquidation=liquidation,
+            bid=bid,
+            ask=ask,
+        )
+
+    async def place_order(
+        self, amount_left: float, liquidation: Liquidation, bid: float, ask: float
+    ) -> int:
+        """place the order"""
+        logger.info(f"Placing {liquidation.direction} order")
+
+        try:
+            # order param variables
+            side = "buy" if liquidation.direction == "long" else "sell"
+            price = bid if liquidation.direction == "long" else ask
+            stoploss_price = (
+                round(bid * 0.995, 1)
+                if liquidation.direction == "long"
+                else round(ask * 1.005, 1)
+            )
+            takeprofit_price = (
+                round(bid * 1.015, 1)
+                if liquidation.direction == "long"
+                else round(ask * 0.985, 1)
+            )
+            # outside trading hours and days, place a small order, inside trading hours
+            # and days, place a full order
+            initial_order_params = dict(
+                symbol=TICKER,
+                type="limit",
+                price=price,
+                side=side,
+                amount=amount_left,
+                params=dict(
+                    stopLoss=dict(
+                        triggerPrice=stoploss_price,
+                        reduceOnly=True,
+                    ),
+                    takeProfit=dict(
+                        triggerPrice=takeprofit_price,
+                        reduceOnly=True,
+                    ),
+                    marginMode="isolated",
+                    postOnly=True,
+                    positionSide=liquidation.direction,
+                    timeInForce="PO",  # Post Only
+                ),
+            )
 
             try:
-                # order param variables
-                side = "buy" if liquidation.direction == "long" else "sell"
-                price = bid if liquidation.direction == "long" else ask
-                stoploss_price = (
-                    round(bid * 0.995, 1)
-                    if liquidation.direction == "long"
-                    else round(ask * 1.005, 1)
-                )
-                takeprofit_price = (
-                    round(bid * 1.015, 1)
-                    if liquidation.direction == "long"
-                    else round(ask * 0.985, 1)
-                )
-                # outside trading hours and days, place a small order, inside trading hours
-                # and days, place a full order
-                amount_left = (
-                    self.position_size
-                    if self.scanner.now.weekday() in TRADING_DAYS
-                    and self.scanner.now.hour in TRADING_HOURS
-                    else 0.1
-                )
-                initial_order_params = dict(
-                    symbol=TICKER,
-                    type="limit",
-                    price=price,
-                    side=side,
-                    amount=amount_left,
-                    params=dict(
-                        stopLoss=dict(
-                            triggerPrice=stoploss_price,
-                            reduceOnly=True,
-                        ),
-                        takeProfit=dict(
-                            triggerPrice=takeprofit_price,
-                            reduceOnly=True,
-                        ),
-                        marginMode="isolated",
-                        postOnly=True,
-                        positionSide=liquidation.direction,
-                        timeInForce="PO",  # Post Only
-                    ),
-                )
-
-                try:
-                    order = await self.exchange.create_order(**initial_order_params)
-                except Exception as e:
-                    logger.error(f"Error placing order: {e}")
-                    order = None
-
-                while amount_left > 0.1:
-                    ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
-                    new_bid, new_ask = ticker_data["bid"], ticker_data["ask"]
-                    if (new_bid, new_ask) != (bid, ask):
-                        bid, ask = new_bid, new_ask
-                        if order:
-
-                            try:
-                                await self.exchange.cancel_order(order["id"], TICKER)
-                            except Exception as e:
-                                logger.error(f"Error cancelling order: {e}")
-
-                            try:
-                                updated_orders = (
-                                    await self.exchange.fetch_closed_orders(
-                                        symbol=TICKER,
-                                        limit=5,
-                                    )
-                                )
-                            except Exception as e:
-                                logger.error(f"Error fetching orders: {e}")
-                                updated_orders = []
-
-                            for updated_order in updated_orders:
-                                if updated_order["id"] == order["id"]:
-                                    logger.info(
-                                        f"Order {order['id']} was updated: {updated_order['info']}"
-                                    )
-                                    amount_left -= float(
-                                        updated_order["info"]["filledSize"]
-                                    )
-                                    break
-                        if amount_left > 0.1:
-
-                            try:
-                                price = (
-                                    new_bid
-                                    if liquidation.direction == "long"
-                                    else new_ask
-                                )
-                                order = await self.exchange.create_order(
-                                    **initial_order_params
-                                    | dict(price=price, amount=amount_left)
-                                )
-                                logger.info(
-                                    f"Refreshed order placed: {order.get('info', {})}"
-                                )
-                            except Exception as e:
-                                logger.error(f"Error placing order: {e}")
-                                order = None
-
-                order_info = order.get("info", {})
-                order_log_info = order_info | initial_order_params
-                logger.info(f"{order_log_info=}")
-                if USE_DISCORD:
-                    threading.Thread(
-                        target=post_to_discord,
-                        kwargs=dict(
-                            messages=[f"order:\n{json_dumps(order_log_info)}"],
-                            at_everyone=(
-                                True
-                                if self.scanner.now.weekday() in TRADING_DAYS
-                                and self.scanner.now.hour in TRADING_HOURS
-                                and USE_AT_EVERYONE
-                                else False
-                            ),
-                        ),
-                    ).start()
-
-                if USE_AUTO_JOURNALING:
-                    response = None
-                    try:
-                        data = dict(
-                            start=f"{self.scanner.now}",
-                            entry_price=initial_order_params.get("price"),
-                            candles_before_entry=int(
-                                round(
-                                    (
-                                        self.scanner.now
-                                        - datetime.fromtimestamp(liquidation.time)
-                                    ).seconds
-                                    / 300,  # 5 minutes
-                                    0,
-                                )
-                                - 1  # number of candles before entry, not distance
-                            ),
-                            side=(liquidation.direction).upper(),
-                            amount=amount_left / 1000,
-                            take_profit_price=initial_order_params["params"][
-                                "takeProfit"
-                            ]["triggerPrice"],
-                            stop_loss_price=initial_order_params["params"]["stopLoss"][
-                                "triggerPrice"
-                            ],
-                            liquidation_amount=int(
-                                self.liquidation_set.total_amount(liquidation.direction)
-                            ),
-                            nr_of_liquidations=liquidation.nr_of_liquidations,
-                        )
-                        response = requests.post(
-                            f"{JOURNAL_HOST_AND_PORT}/api/positions/",
-                            headers={"Authorization": f"Api-Key {JOURNALING_API_KEY}"},
-                            data=data,
-                        )
-                        response.raise_for_status()
-                        logger.info(f"Position journaled: {response.json()}")
-                    except Exception as e:
-                        logger.error(
-                            f"Error journaling position 1/2: {response.content if response else 'No response'}"
-                        )
-                        logger.error(f"Error journaling position 2/2: {e}")
-
+                order = await self.exchange.create_order(**initial_order_params)
             except Exception as e:
                 logger.error(f"Error placing order: {e}")
-                return 1
+                order = None
 
-            self.liquidation_set.mark_liquidations_as_used(liquidation.direction)
+            while amount_left >= 0.1:
+                ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
+                new_bid, new_ask = ticker_data["bid"], ticker_data["ask"]
+                if (new_bid, new_ask) != (bid, ask):
+                    bid, ask = new_bid, new_ask
+                    if order:
+
+                        try:
+                            await self.exchange.cancel_order(order["id"], TICKER)
+                        except Exception as e:
+                            logger.error(f"Error cancelling order: {e}")
+
+                        try:
+                            updated_orders = await self.exchange.fetch_closed_orders(
+                                symbol=TICKER,
+                                limit=5,
+                            )
+                        except Exception as e:
+                            logger.error(f"Error fetching orders: {e}")
+                            updated_orders = []
+
+                        for updated_order in updated_orders:
+                            if updated_order["id"] == order["id"]:
+                                logger.info(
+                                    f"Order {order['id']} was updated: {updated_order['info']}"
+                                )
+                                amount_left -= float(
+                                    updated_order["info"]["filledSize"]
+                                )
+                                break
+
+                    if amount_left >= 0.1:
+                        try:
+                            price = (
+                                new_bid if liquidation.direction == "long" else new_ask
+                            )
+                            order = await self.exchange.create_order(
+                                **initial_order_params
+                                | dict(price=price, amount=amount_left)
+                            )
+                            logger.info(
+                                f"Refreshed order placed: {order.get('info', {})}"
+                            )
+                        except Exception as e:
+                            logger.error(f"Error placing order: {e}")
+                            order = None
+
+            order_info = order.get("info", {})
+            order_log_info = order_info | initial_order_params
+            logger.info(f"{order_log_info=}")
+            if USE_DISCORD:
+                threading.Thread(
+                    target=post_to_discord,
+                    kwargs=dict(
+                        messages=[f"order:\n{json_dumps(order_log_info)}"],
+                        at_everyone=(
+                            True
+                            if self.scanner.now.weekday() in TRADING_DAYS
+                            and self.scanner.now.hour in TRADING_HOURS
+                            and USE_AT_EVERYONE
+                            else False
+                        ),
+                    ),
+                ).start()
+
+            if USE_AUTO_JOURNALING:
+                response = None
+                try:
+                    data = dict(
+                        start=f"{self.scanner.now}",
+                        entry_price=initial_order_params.get("price"),
+                        candles_before_entry=int(
+                            round(
+                                (
+                                    self.scanner.now
+                                    - datetime.fromtimestamp(liquidation.time)
+                                ).seconds
+                                / 300,  # 5 minutes
+                                0,
+                            )
+                            - 1  # number of candles before entry, not distance
+                        ),
+                        side=(liquidation.direction).upper(),
+                        amount=amount_left / 1000,
+                        take_profit_price=initial_order_params["params"]["takeProfit"][
+                            "triggerPrice"
+                        ],
+                        stop_loss_price=initial_order_params["params"]["stopLoss"][
+                            "triggerPrice"
+                        ],
+                        liquidation_amount=int(
+                            self.liquidation_set.total_amount(liquidation.direction)
+                        ),
+                        nr_of_liquidations=liquidation.nr_of_liquidations,
+                    )
+                    response = requests.post(
+                        f"{JOURNAL_HOST_AND_PORT}/api/positions/",
+                        headers={"Authorization": f"Api-Key {JOURNALING_API_KEY}"},
+                        data=data,
+                    )
+                    response.raise_for_status()
+                    logger.info(f"Position journaled: {response.json()}")
+                except Exception as e:
+                    logger.error(
+                        f"Error journaling position 1/2: {response.content if response else 'No response'}"
+                    )
+                    logger.error(f"Error journaling position 2/2: {e}")
+
+        except Exception as e:
+            logger.error(f"Error placing order: {e}")
             return 1
-        return 0
+
+        self.liquidation_set.mark_liquidations_as_used(liquidation.direction)
+        return 1

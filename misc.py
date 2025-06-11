@@ -4,13 +4,6 @@ from decouple import config
 from logger import logger
 
 
-MINIMAL_NR_OF_LIQUIDATIONS = config("MINIMAL_NR_OF_LIQUIDATIONS", default=3, cast=int)
-logger.info(f"{MINIMAL_NR_OF_LIQUIDATIONS=}")
-
-MINIMAL_LIQUIDATION = config("MINIMAL_LIQUIDATION", default=10_000, cast=int)
-logger.info(f"{MINIMAL_LIQUIDATION=}")
-
-
 @dataclass
 class Candle:
     """Candle class to hold the candle data"""
@@ -35,18 +28,6 @@ class Liquidation:
     candle: Candle
     time_frame: str = "5m"  # Default time frame
     used_for_trade: bool = False
-
-    @property
-    def meets_criteria(self) -> bool:
-        """Check if the liquidation meets the criteria for trading."""
-
-        if (
-            self.nr_of_liquidations < MINIMAL_NR_OF_LIQUIDATIONS
-            and self.amount < 100_000
-        ):
-            return False
-
-        return self.amount > MINIMAL_LIQUIDATION
 
     def to_dict(self) -> dict:
         """Convert the Liquidation instance to a json dumpable dictionary."""
@@ -89,12 +70,12 @@ class LiquidationSet:
             liquidations=[liquidation.to_dict() for liquidation in self.liquidations]
         )
 
-    def remove_old_liquidations_if_needed(self) -> None:
-        """Remove liquidations older than 35 minutes."""
+    def remove_old_liquidations(self, now: datetime) -> None:
+        """Remove liquidations older than 60 minutes."""
 
         for liquidation in self.liquidations:
-            now_rounded = datetime.now().replace(second=0, microsecond=0)
-            if liquidation.time < (now_rounded - timedelta(minutes=30)).timestamp():
+            now_rounded = now.replace(second=0, microsecond=0)
+            if liquidation.time < (now_rounded - timedelta(minutes=60)).timestamp():
                 self.liquidations.remove(liquidation)
 
     def mark_liquidations_as_used(self, direction: str) -> None:

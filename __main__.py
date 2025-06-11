@@ -13,12 +13,15 @@ if USE_DISCORD:
         INTERVAL,
         N_MINUTES_TIMEDELTA,
     )
-    from misc import (
+    from discord_client import USE_DISCORD, post_to_discord, json_dumps, USE_AT_EVERYONE
+    from exchange import (
+        LEVERAGE,
+        POSITION_PERCENTAGE,
+        TRADING_DAYS,
+        TRADING_HOURS,
         MINIMAL_NR_OF_LIQUIDATIONS,
         MINIMAL_LIQUIDATION,
     )
-    from discord_client import USE_DISCORD, post_to_discord, json_dumps, USE_AT_EVERYONE
-    from exchange import LEVERAGE, POSITION_PERCENTAGE, TRADING_DAYS, TRADING_HOURS
 
     DISCORD_SETTINGS = dict(
         trading_days=TRADING_DAYS,
@@ -116,8 +119,7 @@ async def main() -> None:
             scanner.now = now
 
             # run strategy for the exchange on LIQUIDATIONS list
-            if await exchange.run_loop():
-                continue
+            await exchange.run_loop()
 
             # check for fresh liquidations and add to LIQUIDATIONS list
             await scanner.handle_liquidation_set(
