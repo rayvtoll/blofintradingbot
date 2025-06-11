@@ -259,7 +259,7 @@ class Exchange:
             # and days, place a full order
             initial_order_params = dict(
                 symbol=TICKER,
-                type="limit",
+                type="post_only",
                 price=price,
                 side=side,
                 amount=amount_left,
