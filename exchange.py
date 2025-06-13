@@ -129,8 +129,9 @@ class Exchange:
         # loop over detected liquidations
         for liquidation in self.liquidation_set.liquidations:
 
-            # if liquidation is already used for trade, skip it
-            if liquidation.used_for_trade:
+            # check if liquidation is too old
+            now_rounded = self.scanner.now.replace(second=0, microsecond=0)
+            if liquidation.time < (now_rounded - timedelta(minutes=5)).timestamp():
                 continue
 
             # if liquidation is not valid, skip it
@@ -210,10 +211,6 @@ class Exchange:
         ):
             return False
 
-        # check if liquidation is too old for live strategy
-        now_rounded = self.scanner.now.replace(second=0, microsecond=0)
-        if liquidation.time < (now_rounded - timedelta(minutes=5)).timestamp():
-            return False
 
         for position in positions:
             if position.get("side") != liquidation.direction:
@@ -438,4 +435,3 @@ class Exchange:
         except Exception as e:
             logger.error(f"Error placing order: {e}")
 
-        self.liquidation_set.mark_liquidations_as_used(liquidation.direction)

@@ -27,7 +27,6 @@ class Liquidation:
     nr_of_liquidations: int
     candle: Candle
     time_frame: str = "5m"  # Default time frame
-    used_for_trade: bool = False
 
     def to_dict(self) -> dict:
         """Convert the Liquidation instance to a json dumpable dictionary."""
@@ -75,12 +74,5 @@ class LiquidationSet:
 
         for liquidation in self.liquidations:
             now_rounded = now.replace(second=0, microsecond=0)
-            if liquidation.time < (now_rounded - timedelta(minutes=60)).timestamp():
+            if liquidation.time < (now_rounded - timedelta(minutes=10)).timestamp():
                 self.liquidations.remove(liquidation)
-
-    def mark_liquidations_as_used(self, direction: str) -> None:
-        """Mark all liquidations as used for a given direction."""
-
-        for liquidation in self.liquidations:
-            if liquidation.direction == direction:
-                liquidation.used_for_trade = True
