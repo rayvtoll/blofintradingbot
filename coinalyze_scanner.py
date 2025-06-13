@@ -4,13 +4,7 @@ from functools import cached_property
 from logger import logger
 from misc import Candle, Liquidation, LiquidationSet
 import requests
-import threading
 from typing import List
-
-from discord_client import USE_DISCORD
-
-if USE_DISCORD:
-    from discord_client import post_to_discord, json_dumps
 
 
 COINALYZE_SECRET_API_KEY = config("COINALYZE_SECRET_API_KEY")
@@ -80,7 +74,6 @@ class CoinalyzeScanner:
             if short > 100:
                 nr_of_liquidations += 1
 
-        discord_liquidations: List[Liquidation] = []
         if total_long > 1000:
             liquidation = Liquidation(
                 amount=total_long,
@@ -90,7 +83,6 @@ class CoinalyzeScanner:
                 candle=candle,
             )
             self.liquidation_set.liquidations.insert(0, liquidation)
-            discord_liquidations.append(liquidation)
         if total_short > 1000:
             liquidation = Liquidation(
                 amount=total_short,
@@ -100,18 +92,6 @@ class CoinalyzeScanner:
                 candle=candle,
             )
             self.liquidation_set.liquidations.insert(0, liquidation)
-            discord_liquidations.append(liquidation)
-        if USE_DISCORD and discord_liquidations:
-            threading.Thread(
-                target=post_to_discord,
-                kwargs=dict(
-                    messages=["liquidations:"]
-                    + [
-                        json_dumps(liquidation.to_dict())
-                        for liquidation in discord_liquidations
-                    ],
-                ),
-            ).start()
 
     async def handle_coinalyze_url(
         self, url: str, include_params: bool = True, symbols: bool = False
