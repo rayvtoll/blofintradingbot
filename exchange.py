@@ -276,6 +276,26 @@ class Exchange:
             order = {}
         return order
 
+    async def get_sl_and_tp(
+        self, liquidation: Liquidation, bid: float, ask: float
+    ) -> tuple[float, float]:
+        """Calculate stop loss and take profit prices based on the liquidation
+        direction"""
+        stoploss_percentage = 0.005  # 0.5% stop loss
+        takeprofit_percentage = 0.05  # 5% take profit
+
+        stoploss_price = (
+            round(bid * (1 - stoploss_percentage), 1)
+            if liquidation.direction == "long"
+            else round(ask * (1 + stoploss_percentage), 1)
+        )
+        takeprofit_price = (
+            round(bid * (1 + takeprofit_percentage), 1)
+            if liquidation.direction == "long"
+            else round(ask * (1 - takeprofit_percentage), 1)
+        )
+        return stoploss_price, takeprofit_price
+
     async def process_order_placement(
         self,
         amount: float,
@@ -291,15 +311,8 @@ class Exchange:
         try:
             amount_left = amount
             price = bid if liquidation.direction == "long" else ask
-            stoploss_price = (
-                round(bid * 0.995, 1)
-                if liquidation.direction == "long"
-                else round(ask * 1.005, 1)
-            )
-            takeprofit_price = (
-                round(bid * 1.015, 1)
-                if liquidation.direction == "long"
-                else round(ask * 0.985, 1)
+            stoploss_price, takeprofit_price = await self.get_sl_and_tp(
+                liquidation, bid, ask
             )
             params = dict(
                 direction=liquidation.direction,
@@ -347,15 +360,8 @@ class Exchange:
                             price = (
                                 new_bid if liquidation.direction == "long" else new_ask
                             )
-                            stoploss_price = (
-                                round(new_bid * 0.995, 1)
-                                if liquidation.direction == "long"
-                                else round(new_ask * 1.005, 1)
-                            )
-                            takeprofit_price = (
-                                round(new_bid * 1.015, 1)
-                                if liquidation.direction == "long"
-                                else round(new_ask * 0.985, 1)
+                            stoploss_price, takeprofit_price = await self.get_sl_and_tp(
+                                liquidation, new_bid, new_ask
                             )
                             params = dict(
                                 direction=liquidation.direction,
