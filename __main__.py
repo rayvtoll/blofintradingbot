@@ -72,12 +72,37 @@ async def main() -> None:
 
     while True:
         now = datetime.now()
+
+        if (now.minute % 5 == 0 and now.second == 0) or first_run:
+            first_run = False
+            scanner.now = now
+
+            # run strategy for the exchange on LIQUIDATIONS list
+            await exchange.run_loop()
+
+            # check for fresh liquidations and add to LIQUIDATIONS list
+            await scanner.handle_liquidation_set(
+                exchange.last_candle,
+                await scanner.handle_coinalyze_url(COINALYZE_LIQUIDATION_URL),
+            )
+            if LIQUIDATIONS:
+                logger.info(f"{LIQUIDATIONS=}")
+
+            # prevent double processing
+            await sleep(0.99)
+
+        # send a hearbeat to discord every 4 hours
+        if now.hour % 4 == 0 and now.minute == 1 and now.second == 0:
+            if USE_DISCORD:
+                threading.Thread(
+                    target=post_to_discord,
+                    kwargs=dict(messages=["."]),
+                ).start()
+
         if now.minute == 58 and now.second == 0:
             # get positions info and set exchange.positions
             try:
-                positions = await exchange.exchange.fetch_positions(
-                    symbols=[TICKER]
-                )
+                positions = await exchange.exchange.fetch_positions(symbols=[TICKER])
                 exchange.positions = [
                     position.get("info", {}) for position in positions
                 ]
@@ -116,24 +141,6 @@ async def main() -> None:
 
         if now.minute % 5 == 4 and now.second == 0:
             exchange.liquidation_set.remove_old_liquidations(now + timedelta(minutes=1))
-
-        if (now.minute % 5 == 0 and now.second == 0) or first_run:
-            first_run = False
-            scanner.now = now
-
-            # run strategy for the exchange on LIQUIDATIONS list
-            await exchange.run_loop()
-
-            # check for fresh liquidations and add to LIQUIDATIONS list
-            await scanner.handle_liquidation_set(
-                exchange.last_candle,
-                await scanner.handle_coinalyze_url(COINALYZE_LIQUIDATION_URL),
-            )
-            if LIQUIDATIONS:
-                logger.info(f"{LIQUIDATIONS=}")
-
-            # prevent double processing
-            await sleep(0.99)
 
         # sleep some just in case
         await sleep(0.01)
