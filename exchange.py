@@ -123,9 +123,6 @@ class Exchange:
         ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
         bid, ask = ticker_data["bid"], ticker_data["ask"]
 
-        # remove old liquidations if they are older than 60 minutes
-        self.liquidation_set.remove_old_liquidations(self.scanner.now)
-
         # loop over detected liquidations
         for liquidation in self.liquidation_set.liquidations:
 

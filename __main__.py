@@ -2,7 +2,7 @@ from typing import List
 from discord_client import USE_DISCORD
 from asyncio import run, sleep
 from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
-from datetime import datetime
+from datetime import datetime, timedelta
 from exchange import Exchange, TICKER
 from logger import logger
 from misc import Liquidation, LiquidationSet
@@ -113,6 +113,9 @@ async def main() -> None:
 
             # prevent double processing
             await sleep(0.99)
+
+        if now.minute % 5 == 4 and now.second == 0:
+            exchange.liquidation_set.remove_old_liquidations(now + timedelta(minutes=1))
 
         if (now.minute % 5 == 0 and now.second == 0) or first_run:
             first_run = False
