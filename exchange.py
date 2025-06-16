@@ -128,7 +128,7 @@ class Exchange:
 
             # check if liquidation is too old
             now_rounded = self.scanner.now.replace(second=0, microsecond=0)
-            if liquidation.time < (now_rounded - timedelta(minutes=5)).timestamp():
+            if liquidation.time < (now_rounded - timedelta(minutes=10)).timestamp():
                 continue
 
             # if liquidation is not valid, skip it
