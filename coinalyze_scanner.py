@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
 from decouple import config
 from functools import cached_property
+from discord_client import USE_DISCORD, post_to_discord, json_dumps
 from logger import logger
 from misc import Candle, Liquidation, LiquidationSet
 import requests
+import threading as Threading
 from typing import List
 
 
@@ -74,24 +76,40 @@ class CoinalyzeScanner:
             if short > 100:
                 nr_of_liquidations += 1
 
+        discord_liquidations: List[Liquidation] = []
         if total_long > 1000:
-            liquidation = Liquidation(
+            long_liquidation = Liquidation(
                 amount=total_long,
                 direction="long",
                 time=l_time,
                 nr_of_liquidations=nr_of_liquidations,
                 candle=candle,
             )
-            self.liquidation_set.liquidations.insert(0, liquidation)
+            if long_liquidation.is_valid:
+                self.liquidation_set.liquidations.insert(0, long_liquidation)
+                discord_liquidations.append(long_liquidation)
         if total_short > 1000:
-            liquidation = Liquidation(
+            short_liquidation = Liquidation(
                 amount=total_short,
                 direction="short",
                 time=l_time,
                 nr_of_liquidations=nr_of_liquidations,
                 candle=candle,
             )
-            self.liquidation_set.liquidations.insert(0, liquidation)
+            if short_liquidation.is_valid:
+                self.liquidation_set.liquidations.insert(0, short_liquidation)
+                discord_liquidations.append(short_liquidation)
+        if USE_DISCORD and discord_liquidations:
+            Threading.Thread(
+                target=post_to_discord,
+                kwargs=dict(
+                    messages=["Liquidation(s):"]
+                    + [
+                        json_dumps(liquidation.to_dict())
+                        for liquidation in discord_liquidations
+                    ],
+                ),
+            ).start()
 
     async def handle_coinalyze_url(
         self, url: str, include_params: bool = True, symbols: bool = False
