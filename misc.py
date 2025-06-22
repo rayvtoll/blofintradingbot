@@ -88,9 +88,9 @@ class LiquidationSet:
         )
 
     def remove_old_liquidations(self, now: datetime) -> None:
-        """Remove liquidations older than 15 minutes."""
+        """Remove liquidations older than 5 minutes."""
 
         for liquidation in self.liquidations:
             now_rounded = now.replace(second=0, microsecond=0)
-            if liquidation.time < (now_rounded - timedelta(minutes=15)).timestamp():
+            if liquidation.time < (now_rounded - timedelta(minutes=5)).timestamp():
                 self.liquidations.remove(liquidation)
