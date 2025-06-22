@@ -96,7 +96,7 @@ class Exchange:
                 limit=2,
             )
             last_candle: Candle = Candle(*last_candles[-1])
-            logger.info(f"{self.last_candle=}")
+            logger.info(f"{last_candle=}")
             return last_candle
         except Exception as e:
             logger.error(f"Error fetching ohlcv: {e}")

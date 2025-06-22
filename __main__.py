@@ -83,7 +83,7 @@ async def main() -> None:
 
             # check for fresh liquidations and add to LIQUIDATIONS list
             await scanner.handle_liquidation_set(
-                exchange.get_last_candle(),
+                await exchange.get_last_candle(),
                 await scanner.handle_coinalyze_url(COINALYZE_LIQUIDATION_URL),
             )
             if LIQUIDATIONS:
