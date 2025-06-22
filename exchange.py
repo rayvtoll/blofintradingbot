@@ -1,7 +1,7 @@
 import threading
 from typing import List
 import ccxt.pro as ccxt
-from datetime import datetime, timedelta
+from datetime import datetime
 from decouple import config, Csv
 import requests
 from coinalyze_scanner import CoinalyzeScanner
@@ -38,10 +38,6 @@ TRADING_DAYS = config("TRADING_DAYS", cast=Csv(int), default=[])
 logger.info(f"{TRADING_DAYS=}")
 TRADING_HOURS = config("TRADING_HOURS", cast=Csv(int), default=[])
 logger.info(f"{TRADING_HOURS=}")
-MINIMAL_NR_OF_LIQUIDATIONS = config("MINIMAL_NR_OF_LIQUIDATIONS", default=3, cast=int)
-logger.info(f"{MINIMAL_NR_OF_LIQUIDATIONS=}")
-MINIMAL_LIQUIDATION = config("MINIMAL_LIQUIDATION", default=10_000, cast=int)
-logger.info(f"{MINIMAL_LIQUIDATION=}")
 
 
 class Exchange:
@@ -62,8 +58,21 @@ class Exchange:
         self.open_orders: List[dict] = []
         self.scanner: CoinalyzeScanner = scanner
 
+    async def get_open_positions(self) -> List[dict]:
+        """Get open positions for the exchange"""
+
+        try:
+            positions: List[dict] = await self.exchange.fetch_positions(
+                symbols=[TICKER]
+            )
+        except Exception as e:
+            logger.error(f"Error fetching positions: {e}")
+            positions = []
+        return positions
+
     async def set_leverage(self, symbol: str, leverage: int, direction: str) -> None:
         """Set the leverage for the exchange"""
+
         try:
             logger.info(
                 await self.exchange.set_leverage(
@@ -75,8 +84,9 @@ class Exchange:
         except Exception as e:
             logger.warning(f"Error settings leverage: {e}")
 
-    async def set_last_candle(self) -> None:
-        """Set the last candle for the exchange"""
+    async def get_last_candle(self) -> Candle | None:
+        """Get the last candle for the exchange"""
+
         try:
 
             last_candles = await self.exchange.fetch_ohlcv(
@@ -85,21 +95,23 @@ class Exchange:
                 since=None,
                 limit=2,
             )
-            self.last_candle = Candle(*last_candles[-1])
+            last_candle: Candle = Candle(*last_candles[-1])
             logger.info(f"{self.last_candle=}")
+            return last_candle
         except Exception as e:
             logger.error(f"Error fetching ohlcv: {e}")
+            return None
 
     async def set_position_size(self) -> None:
         """Set the position size for the exchange"""
-        try:
-            balance = await self.exchange.fetch_balance()
-            total_balance = balance.get("USDT", {}).get("total", 1)
-            usdt_size = (total_balance / (0.5 * LEVERAGE)) * POSITION_PERCENTAGE
 
-            position_size = round(
-                usdt_size / self.last_candle.close * LEVERAGE * 1000, 1
-            )
+        try:
+            balance: dict = await self.exchange.fetch_balance()
+            total_balance: float = balance.get("USDT", {}).get("total", 1)
+            usdt_size: float = (total_balance / (0.5 * LEVERAGE)) * POSITION_PERCENTAGE
+
+            _, ask = await self.get_bid_ask()
+            position_size: float = round(usdt_size / ask * LEVERAGE * 1000, 1)
         except Exception as e:
             position_size = 0.1
             logger.error(f"Error setting position size: {e}")
@@ -114,73 +126,48 @@ class Exchange:
     @property
     def position_size(self) -> int:
         """Get the position size for the exchange"""
+
         return self._position_size
 
     async def run_loop(self) -> None:
         """Run the loop for the exchange"""
 
         # get last bid & ask from ticker
-        ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
-        bid, ask = ticker_data["bid"], ticker_data["ask"]
+        bid, ask = await self.get_bid_ask()
 
         # loop over detected liquidations
         for liquidation in self.liquidation_set.liquidations:
-
-            # check if liquidation is too old
-            now_rounded = self.scanner.now.replace(second=0, microsecond=0)
-            if liquidation.time < (now_rounded - timedelta(minutes=10)).timestamp():
-                continue
-
-            # if liquidation is not valid, skip it
-            if not await self.liquidation_is_valid(liquidation):
-                continue
 
             # if reaction to liquidation is not strong, skip it
             if not await self.reaction_to_liquidation_is_strong(liquidation, bid, ask):
                 continue
 
-            positions = await self.exchange.fetch_positions(symbols=[TICKER])
-
             # if order is created exit loop
-            if await self.apply_live_strategy(positions, liquidation, bid, ask):
+            if await self.apply_live_strategy(liquidation, bid, ask):
                 break
 
-            if await self.journaling_strategy(positions, liquidation, bid, ask):
+            if await self.journaling_strategy(liquidation, bid, ask):
                 break
-
-        # to prevent delay new orders, set the position size and last candle at the end
-        # of the loop
-        await self.set_last_candle()
-        await self.set_position_size()
 
     async def reaction_to_liquidation_is_strong(
         self, liquidation: Liquidation, bid: float, ask: float
     ) -> bool:
-        """Check if the reaction to the liquidation is strong enough to place an order"""
+        """Check if the reaction to the liquidation is strong enough to place an
+        order"""
+
         if (liquidation.direction == "long" and bid > liquidation.candle.high) or (
             liquidation.direction == "short" and ask < liquidation.candle.low
         ):
             return True
         return False
 
-    async def liquidation_is_valid(self, liquidation: Liquidation) -> bool:
-        """Check if the liquidation is valid for trading"""
-        # currently 3 liquidations and a total of > 10k OR 1 liquidation and a total
-        # of > 100k
-        if (
-            liquidation.nr_of_liquidations < MINIMAL_NR_OF_LIQUIDATIONS
-            and liquidation.amount < 100_000
-        ) or liquidation.amount < MINIMAL_LIQUIDATION:
-            return False
-        return True
-
     async def journaling_strategy(
-        self, positions: List[dict], liquidation: Liquidation, bid: float, ask: float
+        self, liquidation: Liquidation, bid: float, ask: float
     ) -> bool:
         """Apply the journaling strategy to create datapoints for the journal with
         minimal risk"""
 
-        for position in positions:
+        for position in self.positions:
             if position.get("side") == liquidation.direction:
                 logger.info(
                     f"Already in {liquidation.direction} position. Skipping order for journaling strategy."
@@ -197,7 +184,7 @@ class Exchange:
         return True
 
     async def apply_live_strategy(
-        self, positions: List[dict], liquidation: Liquidation, bid: float, ask: float
+        self, liquidation: Liquidation, bid: float, ask: float
     ) -> bool:
         """Apply the live strategy during trading hours and days"""
 
@@ -208,8 +195,7 @@ class Exchange:
         ):
             return False
 
-
-        for position in positions:
+        for position in self.positions:
             if position.get("side") != liquidation.direction:
                 continue
 
@@ -275,6 +261,7 @@ class Exchange:
     ) -> tuple[float, float]:
         """Calculate stop loss and take profit prices based on the liquidation
         direction"""
+
         stoploss_percentage = 0.005  # 0.5% stop loss
         takeprofit_percentage = 0.05  # 5% take profit
 
@@ -289,6 +276,13 @@ class Exchange:
             else round(ask * (1 - takeprofit_percentage), 1)
         )
         return stoploss_price, takeprofit_price
+
+    async def get_bid_ask(self) -> tuple[float, float]:
+        """Get the current bid and ask prices from the exchange ticker"""
+
+        ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
+        bid, ask = ticker_data["bid"], ticker_data["ask"]
+        return bid, ask
 
     async def process_order_placement(
         self,
@@ -319,8 +313,7 @@ class Exchange:
             order = await self._place_order(**params)
 
             while amount_left >= 0.1:
-                ticker_data = await self.exchange.fetch_ticker(symbol=TICKER)
-                new_bid, new_ask = ticker_data["bid"], ticker_data["ask"]
+                new_bid, new_ask = await self.get_bid_ask()
                 if (new_bid, new_ask) != (bid, ask):
                     bid, ask = new_bid, new_ask
                     if order:
@@ -384,9 +377,7 @@ class Exchange:
                     target=post_to_discord,
                     kwargs=dict(
                         messages=[f"order:\n{json_dumps(order_log_info)}"],
-                        at_everyone=(
-                            True if live_strategy and USE_AT_EVERYONE else False
-                        ),
+                        at_everyone=True if USE_AT_EVERYONE else False,
                     ),
                 ).start()
 
@@ -431,4 +422,3 @@ class Exchange:
 
         except Exception as e:
             logger.error(f"Error placing order: {e}")
-

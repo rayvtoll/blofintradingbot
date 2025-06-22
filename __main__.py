@@ -19,9 +19,8 @@ if USE_DISCORD:
         POSITION_PERCENTAGE,
         TRADING_DAYS,
         TRADING_HOURS,
-        MINIMAL_NR_OF_LIQUIDATIONS,
-        MINIMAL_LIQUIDATION,
     )
+    from misc import MINIMAL_NR_OF_LIQUIDATIONS, MINIMAL_LIQUIDATION
 
     DISCORD_SETTINGS = dict(
         trading_days=TRADING_DAYS,
@@ -47,6 +46,8 @@ async def main() -> None:
 
     # enable exchange
     exchange = Exchange(LIQUIDATION_SET, scanner)
+    exchange.positions = await exchange.get_open_positions()
+
     for direction in ["long", "short"]:
         await exchange.set_leverage(
             symbol=TICKER,
@@ -82,14 +83,13 @@ async def main() -> None:
 
             # check for fresh liquidations and add to LIQUIDATIONS list
             await scanner.handle_liquidation_set(
-                exchange.last_candle,
+                exchange.get_last_candle(),
                 await scanner.handle_coinalyze_url(COINALYZE_LIQUIDATION_URL),
             )
             if LIQUIDATIONS:
                 logger.info(f"{LIQUIDATIONS=}")
 
-            # prevent double processing
-            await sleep(0.99)
+            await sleep(0.99)  # prevent double processing
 
         # send a hearbeat to discord every 4 hours
         if now.hour % 4 == 0 and now.minute == 1 and now.second == 0:
@@ -98,6 +98,7 @@ async def main() -> None:
                     target=post_to_discord,
                     kwargs=dict(messages=["."]),
                 ).start()
+
             await sleep(0.99)  # prevent double processing
 
         if now.minute == 58 and now.second == 0:
@@ -137,11 +138,14 @@ async def main() -> None:
                         kwargs=dict(messages=open_positions_and_orders),
                     ).start()
 
-            # prevent double processing
-            await sleep(0.99)
+            await sleep(0.99)  # prevent double processing
 
         if now.minute % 5 == 4 and now.second == 0:
             exchange.liquidation_set.remove_old_liquidations(now + timedelta(minutes=1))
+            exchange.positions = await exchange.get_open_positions()
+            await exchange.set_position_size()
+
+            await sleep(0.99)  # prevent double processing
 
         # sleep some just in case
         await sleep(0.01)
