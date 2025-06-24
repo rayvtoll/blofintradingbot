@@ -101,7 +101,7 @@ async def main() -> None:
 
             await sleep(0.99)  # prevent double processing
 
-        if now.minute == 58 and now.second == 0:
+        if now.minute % 5 == 3 and now.second == 0:
             # get positions info and set exchange.positions
             try:
                 positions = await exchange.exchange.fetch_positions(symbols=[TICKER])
