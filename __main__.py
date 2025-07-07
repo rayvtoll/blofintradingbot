@@ -17,14 +17,18 @@ if USE_DISCORD:
     from exchange import (
         LEVERAGE,
         POSITION_PERCENTAGE,
-        TRADING_DAYS,
-        TRADING_HOURS,
+        LIVE_TRADING_DAYS,
+        LIVE_TRADING_HOURS,
+        GREY_TRADING_DAYS,
+        GREY_TRADING_HOURS,
     )
     from misc import MINIMAL_NR_OF_LIQUIDATIONS, MINIMAL_LIQUIDATION
 
     DISCORD_SETTINGS = dict(
-        trading_days=TRADING_DAYS,
-        trading_hours=TRADING_HOURS,
+        live_trading_days=LIVE_TRADING_DAYS,
+        live_trading_hours=LIVE_TRADING_HOURS,
+        grey_trading_days=GREY_TRADING_DAYS,
+        grey_trading_hours=GREY_TRADING_HOURS,
         leverage=LEVERAGE,
         position_percentage=POSITION_PERCENTAGE,
         n_minutes_timedelta=N_MINUTES_TIMEDELTA,

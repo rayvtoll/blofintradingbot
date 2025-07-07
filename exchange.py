@@ -34,10 +34,14 @@ LEVERAGE = config("LEVERAGE", cast=int, default=8)
 logger.info(f"{LEVERAGE=}")
 POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=float, default=1.5)
 logger.info(f"{POSITION_PERCENTAGE=}")
-TRADING_DAYS = config("TRADING_DAYS", cast=Csv(int), default=[])
-logger.info(f"{TRADING_DAYS=}")
-TRADING_HOURS = config("TRADING_HOURS", cast=Csv(int), default=[])
-logger.info(f"{TRADING_HOURS=}")
+LIVE_TRADING_DAYS = config("LIVE_TRADING_DAYS", cast=Csv(int), default=[])
+logger.info(f"{LIVE_TRADING_DAYS=}")
+LIVE_TRADING_HOURS = config("LIVE_TRADING_HOURS", cast=Csv(int), default=[])
+logger.info(f"{LIVE_TRADING_HOURS=}")
+GREY_TRADING_DAYS = config("GREY_TRADING_DAYS", cast=Csv(int), default=[])
+logger.info(f"{GREY_TRADING_DAYS=}")
+GREY_TRADING_HOURS = config("GREY_TRADING_HOURS", cast=Csv(int), default=[])
+logger.info(f"{GREY_TRADING_HOURS=}")
 
 
 class Exchange:
@@ -146,6 +150,9 @@ class Exchange:
             if await self.apply_live_strategy(liquidation, bid, ask):
                 break
 
+            if await self.apply_grey_strategy(liquidation, bid, ask):
+                break
+
             if await self.journaling_strategy(liquidation, bid, ask):
                 break
 
@@ -183,16 +190,20 @@ class Exchange:
         )
         return True
 
-    async def apply_live_strategy(
-        self, liquidation: Liquidation, bid: float, ask: float
+    async def apply_strategy(
+        self,
+        liquidation: Liquidation,
+        bid: float,
+        ask: float,
+        days: List[int],
+        hours: List[int],
+        amount: float,
+        strategy_type: str,
     ) -> bool:
-        """Apply the live strategy during trading hours and days"""
+        """Apply the strategy during trading hours and days"""
 
         # check if we are in trading hours and days
-        if (
-            self.scanner.now.weekday() not in TRADING_DAYS
-            or self.scanner.now.hour not in TRADING_HOURS
-        ):
+        if self.scanner.now.weekday() not in days or self.scanner.now.hour not in hours:
             return False
 
         for position in self.positions:
@@ -204,18 +215,48 @@ class Exchange:
                 position.get("contracts") > 0.1
             ):  # TODO: this will no longer work if also implementing 1m strategy
                 logger.info(
-                    f"Already in {liquidation.direction} position with {position.get('contracts')} contracts, skipping order for live strategy"
+                    f"Already in {liquidation.direction} position with {position.get('contracts')} contracts, skipping order for {strategy_type} strategy"
                 )
                 return False
 
         await self.process_order_placement(
-            amount=self.position_size,
+            amount=amount,
             liquidation=liquidation,
             bid=bid,
             ask=ask,
             live_strategy=True,
         )
         return True
+
+    async def apply_grey_strategy(
+        self, liquidation: Liquidation, bid: float, ask: float
+    ) -> bool:
+        """Apply the grey strategy during trading hours and days"""
+
+        return await self.apply_strategy(
+            liquidation=liquidation,
+            bid=bid,
+            ask=ask,
+            days=GREY_TRADING_DAYS,
+            hours=GREY_TRADING_HOURS,
+            amount=round(self.position_size / 2, 1),
+            strategy_type="grey",
+        )
+
+    async def apply_live_strategy(
+        self, liquidation: Liquidation, bid: float, ask: float
+    ) -> bool:
+        """Apply the live strategy during trading hours and days"""
+
+        return await self.apply_strategy(
+            liquidation=liquidation,
+            bid=bid,
+            ask=ask,
+            days=LIVE_TRADING_DAYS,
+            hours=LIVE_TRADING_HOURS,
+            amount=self.position_size,
+            strategy_type="live",
+        )
 
     async def _place_order(
         self,
