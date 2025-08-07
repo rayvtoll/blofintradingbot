@@ -34,14 +34,52 @@ LEVERAGE = config("LEVERAGE", cast=int, default=8)
 logger.info(f"{LEVERAGE=}")
 POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=float, default=1.5)
 logger.info(f"{POSITION_PERCENTAGE=}")
-LIVE_TRADING_DAYS = config("LIVE_TRADING_DAYS", cast=Csv(int), default=[])
+
+# live strategy
+USE_LIVE_STRATEGY = config("USE_LIVE_STRATEGY", cast=bool, default=True)
+logger.info(f"{USE_LIVE_STRATEGY=}")
+LIVE_SL_PERCENTAGE = config("LIVE_SL_PERCENTAGE", cast=float, default=0.5)
+logger.info(f"{LIVE_SL_PERCENTAGE=}")
+LIVE_TP_PERCENTAGE = config("LIVE_TP_PERCENTAGE", cast=float, default=5.0)
+logger.info(f"{LIVE_TP_PERCENTAGE=}")
+LIVE_TRADING_DAYS = config("LIVE_TRADING_DAYS", cast=Csv(int), default="0,1,4,5")
 logger.info(f"{LIVE_TRADING_DAYS=}")
-LIVE_TRADING_HOURS = config("LIVE_TRADING_HOURS", cast=Csv(int), default=[])
+LIVE_TRADING_HOURS = config(
+    "LIVE_TRADING_HOURS", cast=Csv(int), default="2,3,4,14,15,17,18"
+)
 logger.info(f"{LIVE_TRADING_HOURS=}")
-GREY_TRADING_DAYS = config("GREY_TRADING_DAYS", cast=Csv(int), default=[])
+
+# grey strategy
+USE_GREY_STRATEGY = config("USE_GREY_STRATEGY", cast=bool, default=True)
+logger.info(f"{USE_GREY_STRATEGY=}")
+GREY_SL_PERCENTAGE = config("GREY_SL_PERCENTAGE", cast=float, default=0.5)
+logger.info(f"{GREY_SL_PERCENTAGE=}")
+GREY_TP_PERCENTAGE = config("GREY_TP_PERCENTAGE", cast=float, default=0.5)
+logger.info(f"{GREY_TP_PERCENTAGE=}")
+GREY_TRADING_DAYS = config("GREY_TRADING_DAYS", cast=Csv(int), default="0,1,2,3,4,5,6")
 logger.info(f"{GREY_TRADING_DAYS=}")
-GREY_TRADING_HOURS = config("GREY_TRADING_HOURS", cast=Csv(int), default=[])
+GREY_TRADING_HOURS = config(
+    "GREY_TRADING_HOURS", cast=Csv(int), default="1,2,3,4,14,15,16,17,18"
+)
 logger.info(f"{GREY_TRADING_HOURS=}")
+
+# journaling strategy
+USE_JOURNALING_STRATEGY = config("USE_JOURNALING_STRATEGY", cast=bool, default=True)
+logger.info(f"{USE_JOURNALING_STRATEGY=}")
+JOURNALING_SL_PERCENTAGE = config("JOURNALING_SL_PERCENTAGE", cast=float, default=0.5)
+logger.info(f"{JOURNALING_SL_PERCENTAGE=}")
+JOURNALING_TP_PERCENTAGE = config("JOURNALING_TP_PERCENTAGE", cast=float, default=0.5)
+logger.info(f"{JOURNALING_TP_PERCENTAGE=}")
+JOURNALING_TRADING_DAYS = config(
+    "JOURNALING_TRADING_DAYS", cast=Csv(int), default="0,1,2,3,4,5,6"
+)
+logger.info(f"{JOURNALING_TRADING_DAYS=}")
+JOURNALING_TRADING_HOURS = config(
+    "JOURNALING_TRADING_HOURS",
+    cast=Csv(int),
+    default="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23",
+)
+logger.info(f"{JOURNALING_TRADING_HOURS=}")
 
 
 class Exchange:
@@ -168,28 +206,6 @@ class Exchange:
             return True
         return False
 
-    async def journaling_strategy(
-        self, liquidation: Liquidation, bid: float, ask: float
-    ) -> bool:
-        """Apply the journaling strategy to create datapoints for the journal with
-        minimal risk"""
-
-        for position in self.positions:
-            if position.get("side") == liquidation.direction:
-                logger.info(
-                    f"Already in {liquidation.direction} position. Skipping order for journaling strategy."
-                )
-                return False
-
-        await self.process_order_placement(
-            amount=0.1,  # small order for journaling
-            liquidation=liquidation,
-            bid=bid,
-            ask=ask,
-            live_strategy=False,
-        )
-        return True
-
     async def apply_strategy(
         self,
         liquidation: Liquidation,
@@ -199,6 +215,8 @@ class Exchange:
         hours: List[int],
         amount: float,
         strategy_type: str,
+        stoploss_percentage: float,
+        takeprofit_percentage: float,
     ) -> bool:
         """Apply the strategy during trading hours and days"""
 
@@ -211,11 +229,10 @@ class Exchange:
                 continue
 
             # check if there is another journaling position or a live strategy position
-            if (
-                position.get("contracts") > 0.1
-            ):  # TODO: this will no longer work if also implementing 1m strategy
+            amount = amount - position.get("contracts", 0)
+            if amount < 0.1:
                 logger.info(
-                    f"Already in {liquidation.direction} position with {position.get('contracts')} contracts, skipping order for {strategy_type} strategy"
+                    f"Not enough remaining amount for {strategy_type} strategy, skipping order"
                 )
                 return False
 
@@ -225,8 +242,28 @@ class Exchange:
             bid=bid,
             ask=ask,
             live_strategy=True,
+            stoploss_percentage=stoploss_percentage,
+            takeprofit_percentage=takeprofit_percentage,
         )
         return True
+
+    async def journaling_strategy(
+        self, liquidation: Liquidation, bid: float, ask: float
+    ) -> bool:
+        """Apply the journaling strategy to create datapoints for the journal with
+        minimal risk"""
+
+        return await self.apply_strategy(
+            liquidation=liquidation,
+            bid=bid,
+            ask=ask,
+            days=JOURNALING_TRADING_DAYS,
+            hours=JOURNALING_TRADING_HOURS,
+            amount=0.1,
+            strategy_type="journaling",
+            stoploss_percentage=JOURNALING_SL_PERCENTAGE,
+            takeprofit_percentage=JOURNALING_TP_PERCENTAGE,
+        )
 
     async def apply_grey_strategy(
         self, liquidation: Liquidation, bid: float, ask: float
@@ -241,6 +278,8 @@ class Exchange:
             hours=GREY_TRADING_HOURS,
             amount=round(self.position_size / 2, 1),
             strategy_type="grey",
+            stoploss_percentage=GREY_SL_PERCENTAGE,
+            takeprofit_percentage=GREY_TP_PERCENTAGE,
         )
 
     async def apply_live_strategy(
@@ -256,6 +295,8 @@ class Exchange:
             hours=LIVE_TRADING_HOURS,
             amount=self.position_size,
             strategy_type="live",
+            stoploss_percentage=LIVE_SL_PERCENTAGE,
+            takeprofit_percentage=LIVE_TP_PERCENTAGE,
         )
 
     async def _place_order(
@@ -297,24 +338,26 @@ class Exchange:
             order = {}
         return order
 
-    async def get_sl_and_tp(
-        self, liquidation: Liquidation, bid: float, ask: float
+    async def get_sl_and_tp_price(
+        self,
+        liquidation: Liquidation,
+        bid: float,
+        ask: float,
+        stoploss_percentage: float,
+        takeprofit_percentage: float,
     ) -> tuple[float, float]:
         """Calculate stop loss and take profit prices based on the liquidation
         direction"""
 
-        stoploss_percentage = 0.005  # 0.5% stop loss
-        takeprofit_percentage = 0.05  # 5% take profit
-
         stoploss_price = (
-            round(bid * (1 - stoploss_percentage), 1)
+            round(bid * (1 - (stoploss_percentage / 100)), 1)
             if liquidation.direction == "long"
-            else round(ask * (1 + stoploss_percentage), 1)
+            else round(ask * (1 + (stoploss_percentage / 100)), 1)
         )
         takeprofit_price = (
-            round(bid * (1 + takeprofit_percentage), 1)
+            round(bid * (1 + (takeprofit_percentage / 100)), 1)
             if liquidation.direction == "long"
-            else round(ask * (1 - takeprofit_percentage), 1)
+            else round(ask * (1 - (takeprofit_percentage / 100)), 1)
         )
         return stoploss_price, takeprofit_price
 
@@ -332,6 +375,8 @@ class Exchange:
         bid: float,
         ask: float,
         live_strategy: bool,
+        stoploss_percentage: float,
+        takeprofit_percentage: float,
     ) -> None:
         """Process the order placement for a strategy"""
 
@@ -340,8 +385,8 @@ class Exchange:
         try:
             amount_left = amount
             price = bid if liquidation.direction == "long" else ask
-            stoploss_price, takeprofit_price = await self.get_sl_and_tp(
-                liquidation, bid, ask
+            stoploss_price, takeprofit_price = await self.get_sl_and_tp_price(
+                liquidation, bid, ask, stoploss_percentage, takeprofit_percentage
             )
             params = dict(
                 direction=liquidation.direction,
@@ -361,6 +406,7 @@ class Exchange:
 
                         try:
                             await self.exchange.cancel_order(order["id"], TICKER)
+                            logger.info(f"Cancelled order {order['id']}")
                         except Exception as e:
                             logger.error(f"Error cancelling order: {e}")
 
@@ -388,8 +434,14 @@ class Exchange:
                             price = (
                                 new_bid if liquidation.direction == "long" else new_ask
                             )
-                            stoploss_price, takeprofit_price = await self.get_sl_and_tp(
-                                liquidation, new_bid, new_ask
+                            stoploss_price, takeprofit_price = (
+                                await self.get_sl_and_tp_price(
+                                    liquidation,
+                                    new_bid,
+                                    new_ask,
+                                    stoploss_percentage,
+                                    takeprofit_percentage,
+                                )
                             )
                             params = dict(
                                 direction=liquidation.direction,

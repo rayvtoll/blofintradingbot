@@ -17,18 +17,25 @@ if USE_DISCORD:
     from exchange import (
         LEVERAGE,
         POSITION_PERCENTAGE,
+        USE_LIVE_STRATEGY,
+        LIVE_SL_PERCENTAGE,
+        LIVE_TP_PERCENTAGE,
         LIVE_TRADING_DAYS,
         LIVE_TRADING_HOURS,
+        USE_GREY_STRATEGY,
+        GREY_SL_PERCENTAGE,
+        GREY_TP_PERCENTAGE,
         GREY_TRADING_DAYS,
         GREY_TRADING_HOURS,
+        USE_JOURNALING_STRATEGY,
+        JOURNALING_SL_PERCENTAGE,
+        JOURNALING_TP_PERCENTAGE,
+        JOURNALING_TRADING_DAYS,
+        JOURNALING_TRADING_HOURS,
     )
     from misc import MINIMAL_NR_OF_LIQUIDATIONS, MINIMAL_LIQUIDATION
 
     DISCORD_SETTINGS = dict(
-        live_trading_days=LIVE_TRADING_DAYS,
-        live_trading_hours=LIVE_TRADING_HOURS,
-        grey_trading_days=GREY_TRADING_DAYS,
-        grey_trading_hours=GREY_TRADING_HOURS,
         leverage=LEVERAGE,
         position_percentage=POSITION_PERCENTAGE,
         n_minutes_timedelta=N_MINUTES_TIMEDELTA,
@@ -36,6 +43,23 @@ if USE_DISCORD:
         minimal_liquidation=MINIMAL_LIQUIDATION,
         interval=INTERVAL,
     )
+    if USE_LIVE_STRATEGY:
+        DISCORD_SETTINGS["live_sl_percentage"] = LIVE_SL_PERCENTAGE
+        DISCORD_SETTINGS["live_tp_percentage"] = LIVE_TP_PERCENTAGE
+        DISCORD_SETTINGS["live_trading_days"] = LIVE_TRADING_DAYS
+        DISCORD_SETTINGS["live_trading_hours"] = LIVE_TRADING_HOURS
+    
+    if USE_GREY_STRATEGY:
+        DISCORD_SETTINGS["grey_sl_percentage"] = GREY_SL_PERCENTAGE
+        DISCORD_SETTINGS["grey_tp_percentage"] = GREY_TP_PERCENTAGE
+        DISCORD_SETTINGS["grey_trading_days"] = GREY_TRADING_DAYS
+        DISCORD_SETTINGS["grey_trading_hours"] = GREY_TRADING_HOURS
+    
+    if USE_JOURNALING_STRATEGY:
+        DISCORD_SETTINGS["journaling_sl_percentage"] = JOURNALING_SL_PERCENTAGE
+        DISCORD_SETTINGS["journaling_tp_percentage"] = JOURNALING_TP_PERCENTAGE
+        DISCORD_SETTINGS["journaling_trading_days"] = JOURNALING_TRADING_DAYS
+        DISCORD_SETTINGS["journaling_trading_hours"] = JOURNALING_TRADING_HOURS
 
 LIQUIDATIONS: List[Liquidation] = []
 LIQUIDATION_SET: LiquidationSet = LiquidationSet(liquidations=LIQUIDATIONS)
@@ -59,7 +83,7 @@ async def main() -> None:
             direction=direction,
         )
 
-    # clear the terminal and start the bot
+    # start the bot
     info = "Starting / Restarting the bot"
     logger.info(info + "...")
     logger.info(

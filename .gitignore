@@ -31,4 +31,4 @@ pylint.txt
 bandit_report.json
 .coverage
 coverage.json
-testing.py
+testing*

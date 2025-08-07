@@ -1,6 +1,8 @@
-# BloFin scalp bot
+# BloFin Trading Bot
 
-Fully automatic trading bot for Blofin Futures using liquidations from Coinalyze to counter trade as a strategy.
+Fully automatic trading bot for Blofin Futures using liquidations from Coinalyze to counter trade as a strategy. The bot currently uses 3 strategies: live, grey and journaling. The position sizes for these strategies are full, half and minimal size respectively.
+
+## To get started
 
     python -m venv venv
     source venv/bin/activate
@@ -8,20 +10,33 @@ Fully automatic trading bot for Blofin Futures using liquidations from Coinalyze
     pip install -r requirements.txt
     python .
 
-# .env
+## Variables
 
 Have the following variables in your .env file
 
     COINALYZE_SECRET_API_KEY=
-    TRADING_DAYS=
-    TRADING_HOURS=
     POSITION_PERCENTAGE=
     BLOFIN_API_KEY=
     BLOFIN_SECRET_KEY=
     BLOFIN_PASSPHRASE=
+
+If you want to customize the different strategy (LIVE, GREY, JOURNALING) variables add the following to your liking:
+
+    USE_[STRATEGY]_STRATEGY=
+    [STRATEGY]_SL_PERCENTAGE=
+    [STRATEGY]_TP_PERCENTAGE=
+    [STRATEGY]_TRADING_DAYS=
+    [STRATEGY]_TRADING_HOURS=
+
 
 If you want to use a discord bot you add the following variables:
 
     USE_DISCORD=true
     DISCORD_PRIVATE_KEY=
     DISCORD_CHANNEL_ID=
+
+If you want to auto journal your trades you can run my other project https://github.com/rayvtoll/journal-backend and set it up using:
+
+    USE_AUTO_JOURNALING=true
+    JOURNAL_HOST_AND_PORT=
+    JOURNALING_API_KEY=
