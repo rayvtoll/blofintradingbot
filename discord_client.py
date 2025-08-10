@@ -42,10 +42,10 @@ def post_to_discord(
     async def on_ready():
         try:
             channel = client.get_channel(channel_id)
+            if at_everyone:
+                await channel.send(f"@everyone\n")
             for message in messages:
-                await channel.send(
-                    f"{'@everyone\n' if at_everyone else ''}{message}"
-                )
+                await channel.send(f"{message}")
         except Exception as e:
             logger.error(f"Failed to post to Discord: {e}")
         finally:

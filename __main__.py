@@ -174,7 +174,6 @@ async def main() -> None:
                         kwargs=dict(
                             messages=open_positions_and_orders,
                             channel_id=DISCORD_CHANNEL_POSITIONS_ID,
-                            at_everyone=True if USE_AT_EVERYONE else False,
                         ),
                     ).start()
 
