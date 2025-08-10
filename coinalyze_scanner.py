@@ -1,7 +1,14 @@
 from datetime import datetime, timedelta
 from decouple import config
 from functools import cached_property
-from discord_client import USE_DISCORD, post_to_discord, json_dumps
+
+from discord_client import USE_DISCORD
+if USE_DISCORD:
+    from discord_client import (
+        post_to_discord,
+        get_discord_table,
+        DISCORD_CHANNEL_LIQUIDATIONS_ID,
+    )
 from logger import logger
 from misc import Candle, Liquidation, LiquidationSet
 import requests
@@ -105,9 +112,10 @@ class CoinalyzeScanner:
                 kwargs=dict(
                     messages=["Liquidation(s):"]
                     + [
-                        json_dumps(liquidation.to_dict())
+                        get_discord_table(liquidation.to_dict())
                         for liquidation in discord_liquidations
                     ],
+                    channel_id=DISCORD_CHANNEL_LIQUIDATIONS_ID,
                 ),
             ).start()
 

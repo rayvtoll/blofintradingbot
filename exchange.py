@@ -14,7 +14,12 @@ from discord_client import USE_DISCORD
 TICKER: str = "BTC/USDT:USDT"
 
 if USE_DISCORD:
-    from discord_client import post_to_discord, json_dumps, USE_AT_EVERYONE
+    from discord_client import (
+        post_to_discord,
+        get_discord_table,
+        USE_AT_EVERYONE,
+        DISCORD_CHANNEL_TRADES_ID,
+    )
 
 USE_AUTO_JOURNALING = config("USE_AUTO_JOURNALING", cast=bool, default=False)
 logger.info(f"{USE_AUTO_JOURNALING=}")
@@ -469,7 +474,8 @@ class Exchange:
                 threading.Thread(
                     target=post_to_discord,
                     kwargs=dict(
-                        messages=[f"order:\n{json_dumps(order_log_info)}"],
+                        messages=[f"order:\n{get_discord_table(order_log_info)}"],
+                        channel_id=DISCORD_CHANNEL_TRADES_ID,
                         at_everyone=True if USE_AT_EVERYONE else False,
                     ),
                 ).start()

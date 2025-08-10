@@ -1,9 +1,9 @@
 from typing import List
-from discord_client import USE_DISCORD
+from discord_client import USE_DISCORD, get_discord_table
 from asyncio import run, sleep
 from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
 from datetime import datetime, timedelta
-from exchange import Exchange, TICKER
+from exchange import Exchange, TICKER, LEVERAGE
 from logger import logger
 from misc import Liquidation, LiquidationSet
 import threading
@@ -13,9 +13,13 @@ if USE_DISCORD:
         INTERVAL,
         N_MINUTES_TIMEDELTA,
     )
-    from discord_client import USE_DISCORD, post_to_discord, json_dumps, USE_AT_EVERYONE
+    from discord_client import (
+        post_to_discord,
+        USE_AT_EVERYONE,
+        DISCORD_CHANNEL_HEARTBEAT_ID,
+        DISCORD_CHANNEL_POSITIONS_ID,
+    )
     from exchange import (
-        LEVERAGE,
         POSITION_PERCENTAGE,
         USE_LIVE_STRATEGY,
         LIVE_SL_PERCENTAGE,
@@ -48,13 +52,13 @@ if USE_DISCORD:
         DISCORD_SETTINGS["live_tp_percentage"] = LIVE_TP_PERCENTAGE
         DISCORD_SETTINGS["live_trading_days"] = LIVE_TRADING_DAYS
         DISCORD_SETTINGS["live_trading_hours"] = LIVE_TRADING_HOURS
-    
+
     if USE_GREY_STRATEGY:
         DISCORD_SETTINGS["grey_sl_percentage"] = GREY_SL_PERCENTAGE
         DISCORD_SETTINGS["grey_tp_percentage"] = GREY_TP_PERCENTAGE
         DISCORD_SETTINGS["grey_trading_days"] = GREY_TRADING_DAYS
         DISCORD_SETTINGS["grey_trading_hours"] = GREY_TRADING_HOURS
-    
+
     if USE_JOURNALING_STRATEGY:
         DISCORD_SETTINGS["journaling_sl_percentage"] = JOURNALING_SL_PERCENTAGE
         DISCORD_SETTINGS["journaling_tp_percentage"] = JOURNALING_TP_PERCENTAGE
@@ -94,7 +98,8 @@ async def main() -> None:
         threading.Thread(
             target=post_to_discord,
             kwargs=dict(
-                messages=[f"{info} with settings:\n{json_dumps(DISCORD_SETTINGS)}"],
+                messages=[f"{info} with settings:\n{get_discord_table(DISCORD_SETTINGS)}"],
+                channel_id=DISCORD_CHANNEL_HEARTBEAT_ID,
                 at_everyone=True if USE_AT_EVERYONE else False,
             ),
         ).start()
@@ -124,7 +129,10 @@ async def main() -> None:
             if USE_DISCORD:
                 threading.Thread(
                     target=post_to_discord,
-                    kwargs=dict(messages=["."]),
+                    kwargs=dict(
+                        messages=["."],
+                        channel_id=DISCORD_CHANNEL_HEARTBEAT_ID,
+                    ),
                 ).start()
 
             await sleep(0.99)  # prevent double processing
@@ -155,15 +163,19 @@ async def main() -> None:
                 exchange.open_orders = open_orders_info
                 open_positions_and_orders = (
                     ["open_positions:"]
-                    + [json_dumps(position) for position in exchange.positions]
+                    + [get_discord_table(position) for position in exchange.positions]
                     + ["open_orders:"]
-                    + [json_dumps(order) for order in exchange.open_orders]
+                    + [get_discord_table(order) for order in exchange.open_orders]
                 )
                 logger.info(f"{open_positions_and_orders=}")
                 if USE_DISCORD:
                     threading.Thread(
                         target=post_to_discord,
-                        kwargs=dict(messages=open_positions_and_orders),
+                        kwargs=dict(
+                            messages=open_positions_and_orders,
+                            channel_id=DISCORD_CHANNEL_POSITIONS_ID,
+                            at_everyone=True if USE_AT_EVERYONE else False,
+                        ),
                     ).start()
 
             await sleep(0.99)  # prevent double processing
