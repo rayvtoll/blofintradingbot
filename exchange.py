@@ -349,6 +349,7 @@ class Exchange:
                 ),
             )
             order = await self.exchange.create_order(**order_params)
+            await sleep(1)
         except Exception as e:
             logger.error(f"Error placing order: {e}")
             order = {}
@@ -426,7 +427,7 @@ class Exchange:
                         except Exception as e:
                             logger.error(f"Error cancelling order: {e}")
 
-                        await sleep(1)  # Avoid rate limiting
+                        await sleep(1)
 
                         try:
                             updated_orders = await self.exchange.fetch_closed_orders(
@@ -448,6 +449,7 @@ class Exchange:
                                 break
 
                     if amount_left >= 0.1:
+                        new_bid, new_ask = await self.get_bid_ask()
                         try:
                             price = (
                                 new_bid if liquidation.direction == "long" else new_ask
@@ -475,8 +477,6 @@ class Exchange:
                         except Exception as e:
                             logger.error(f"Error placing order: {e}")
                             order = None
-
-                        await sleep(1)  # Avoid rate limiting
 
             order_info = order.get("info", {})
             order_log_info = (
