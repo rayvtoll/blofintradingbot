@@ -1,12 +1,13 @@
-import threading
-from typing import List
+from asyncio import sleep
 import ccxt.pro as ccxt
+from coinalyze_scanner import CoinalyzeScanner
 from datetime import datetime
 from decouple import config, Csv
-import requests
-from coinalyze_scanner import CoinalyzeScanner
-from misc import Candle, Liquidation, LiquidationSet
 from logger import logger
+from misc import Candle, Liquidation, LiquidationSet
+import requests
+import threading
+from typing import List
 
 from discord_client import USE_DISCORD
 
@@ -239,6 +240,16 @@ class Exchange:
                 logger.info(
                     f"Not enough remaining amount for {strategy_type} strategy, skipping order"
                 )
+                if USE_DISCORD:
+                    threading.Thread(
+                        target=post_to_discord,
+                        kwargs=dict(
+                            messages=[
+                                f"Already in position and not enough remaining amount for {strategy_type} strategy, skipping order"
+                            ],
+                            channel_id=DISCORD_CHANNEL_TRADES_ID,
+                        ),
+                    ).start()
                 return False
 
         await self.process_order_placement(
@@ -246,9 +257,9 @@ class Exchange:
             liquidation=liquidation,
             bid=bid,
             ask=ask,
-            live_strategy=True,
             stoploss_percentage=stoploss_percentage,
             takeprofit_percentage=takeprofit_percentage,
+            strategy_type=strategy_type,
         )
         return True
 
@@ -379,9 +390,9 @@ class Exchange:
         liquidation: Liquidation,
         bid: float,
         ask: float,
-        live_strategy: bool,
         stoploss_percentage: float,
         takeprofit_percentage: float,
+        strategy_type: str,
     ) -> None:
         """Process the order placement for a strategy"""
 
@@ -414,6 +425,8 @@ class Exchange:
                             logger.info(f"Cancelled order {order['id']}")
                         except Exception as e:
                             logger.error(f"Error cancelling order: {e}")
+
+                        await sleep(1)  # Avoid rate limiting
 
                         try:
                             updated_orders = await self.exchange.fetch_closed_orders(
@@ -463,18 +476,24 @@ class Exchange:
                             logger.error(f"Error placing order: {e}")
                             order = None
 
+                        await sleep(1)  # Avoid rate limiting
+
             order_info = order.get("info", {})
             order_log_info = (
                 order_info
                 | params
-                | dict(amount=amount, liquidation=liquidation.to_dict())
+                | dict(
+                    amount=amount,
+                    liquidation=liquidation.to_dict(),
+                    strategy_type=strategy_type,
+                )
             )
             logger.info(f"{order_log_info=}")
             if USE_DISCORD:
                 threading.Thread(
                     target=post_to_discord,
                     kwargs=dict(
-                        messages=[f"order:\n{get_discord_table(order_log_info)}"],
+                        messages=[f"{get_discord_table(order_log_info)}"],
                         channel_id=DISCORD_CHANNEL_TRADES_ID,
                         at_everyone=True if USE_AT_EVERYONE else False,
                     ),

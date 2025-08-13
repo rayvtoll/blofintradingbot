@@ -110,8 +110,7 @@ class CoinalyzeScanner:
             Threading.Thread(
                 target=post_to_discord,
                 kwargs=dict(
-                    messages=["Liquidation(s):"]
-                    + [
+                    messages=[
                         get_discord_table(liquidation.to_dict())
                         for liquidation in discord_liquidations
                     ],
