@@ -33,7 +33,10 @@ If you want to use a discord bot you add the following variables:
 
     USE_DISCORD=true
     DISCORD_PRIVATE_KEY=
-    DISCORD_CHANNEL_ID=
+    DISCORD_CHANNEL_POSITIONS_ID=
+    DISCORD_CHANNEL_HEARTBEAT_ID=
+    DISCORD_CHANNEL_LIQUIDATIONS_ID=
+    DISCORD_CHANNEL_TRADES_ID=
 
 If you want to auto journal your trades you can run my other project https://github.com/rayvtoll/journal-backend and set it up using:
 

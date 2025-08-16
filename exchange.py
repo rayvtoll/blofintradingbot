@@ -381,15 +381,10 @@ class Exchange:
                     takeProfit=dict(reduceOnly=True, triggerPrice=takeprofit_price),
                 ),
             )
-            closed_orders = await self.exchange.fetch_closed_orders(
-                symbol=TICKER, limit=1
-            )
-            closed_order = closed_orders[0] if closed_orders else {}
-            price = closed_order.get("average", bid_or_ask)
             await self.do_order_logging(
                 order,
                 liquidation,
-                price,
+                bid_or_ask,
                 stoploss_price,
                 takeprofit_price,
                 amount,
