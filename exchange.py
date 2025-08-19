@@ -86,6 +86,14 @@ JOURNALING_TRADING_HOURS = config(
 )
 logger.info(f"{JOURNALING_TRADING_HOURS=}")
 
+# Strategy types
+LIVE = "live"
+GREY = "grey"
+JOURNALING = "journaling"
+
+# Order Directions
+LONG = "long"
+SHORT = "short"
 
 class Exchange:
     """Exchange class to handle the exchange"""
@@ -187,7 +195,7 @@ class Exchange:
         # loop over detected liquidations
         for liquidation in self.liquidation_set.liquidations:
 
-            bid_or_ask = bid if liquidation.direction == "short" else ask
+            bid_or_ask = bid if liquidation.direction == SHORT else ask
 
             # if reaction to liquidation is not strong, skip it
             if not await self.reaction_to_liquidation_is_strong(
@@ -212,8 +220,8 @@ class Exchange:
         order"""
 
         if (
-            liquidation.direction == "long" and bid_or_ask > liquidation.candle.high
-        ) or (liquidation.direction == "short" and bid_or_ask < liquidation.candle.low):
+            liquidation.direction == LONG and bid_or_ask > liquidation.candle.high
+        ) or (liquidation.direction == SHORT and bid_or_ask < liquidation.candle.low):
             return True
         return False
 
@@ -239,7 +247,8 @@ class Exchange:
                 continue
 
             # check if there is another journaling position or a live strategy position
-            amount = amount - position.get("contracts", 0)
+            if strategy_type != JOURNALING:
+                amount = amount - position.get("contracts", 0)
             if amount < 0.1:
                 logger.info(
                     f"Not enough remaining amount for {strategy_type} strategy, skipping order"
@@ -281,7 +290,7 @@ class Exchange:
             days=JOURNALING_TRADING_DAYS,
             hours=JOURNALING_TRADING_HOURS,
             amount=0.1,
-            strategy_type="journaling",
+            strategy_type=JOURNALING,
             stoploss_percentage=JOURNALING_SL_PERCENTAGE,
             takeprofit_percentage=JOURNALING_TP_PERCENTAGE,
         )
@@ -300,7 +309,7 @@ class Exchange:
             days=GREY_TRADING_DAYS,
             hours=GREY_TRADING_HOURS,
             amount=round(self.position_size / 2, 1),
-            strategy_type="grey",
+            strategy_type=GREY,
             stoploss_percentage=GREY_SL_PERCENTAGE,
             takeprofit_percentage=GREY_TP_PERCENTAGE,
         )
@@ -319,7 +328,7 @@ class Exchange:
             days=LIVE_TRADING_DAYS,
             hours=LIVE_TRADING_HOURS,
             amount=self.position_size,
-            strategy_type="live",
+            strategy_type=LIVE,
             stoploss_percentage=LIVE_SL_PERCENTAGE,
             takeprofit_percentage=LIVE_TP_PERCENTAGE,
         )
@@ -336,12 +345,12 @@ class Exchange:
 
         stoploss_price = (
             round(bid_or_ask * (1 - (stoploss_percentage / 100)), 1)
-            if liquidation.direction == "long"
+            if liquidation.direction == LONG
             else round(bid_or_ask * (1 + (stoploss_percentage / 100)), 1)
         )
         takeprofit_price = (
             round(bid_or_ask * (1 + (takeprofit_percentage / 100)), 1)
-            if liquidation.direction == "long"
+            if liquidation.direction == LONG
             else round(bid_or_ask * (1 - (takeprofit_percentage / 100)), 1)
         )
         return stoploss_price, takeprofit_price
@@ -372,7 +381,7 @@ class Exchange:
             order = await self.exchange.create_order(
                 symbol=TICKER,
                 type="market",
-                side="buy" if liquidation.direction == "long" else "sell",
+                side="buy" if liquidation.direction == LONG else "sell",
                 amount=amount,
                 params=dict(
                     marginMode="isolated",
@@ -423,7 +432,11 @@ class Exchange:
                     kwargs=dict(
                         messages=[f"{get_discord_table(order_log_info)}"],
                         channel_id=DISCORD_CHANNEL_TRADES_ID,
-                        at_everyone=True if USE_AT_EVERYONE else False,
+                        at_everyone=(
+                            True
+                            if (USE_AT_EVERYONE and strategy_type != JOURNALING)
+                            else False
+                        ),
                     ),
                 ).start()
 
