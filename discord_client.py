@@ -21,7 +21,7 @@ if USE_DISCORD:
 def get_discord_table(obj: dict) -> str:
     """Convert a dictionary to a discord friendly table"""
 
-    return f"```{yaml.dump(obj, sort_keys=True, default_flow_style=False)}```"
+    return f"```{yaml.dump(obj, default_flow_style=False)}```"
 
 
 def post_to_discord(

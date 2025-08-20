@@ -37,11 +37,10 @@ class Liquidation:
     def to_dict(self) -> dict:
         """Convert the Liquidation instance to a json dumpable dictionary."""
 
-        return (
-            dict(date_time=str(datetime.fromtimestamp(self.time)))
-            | self.__dict__
-            | dict(candle=self.candle.__dict__)
-        )
+        liquidation_dict = self.__dict__
+        liquidation_dict["volume"] = self.candle.volume
+        del liquidation_dict["candle"]
+        return liquidation_dict
 
     @property
     def is_valid(self) -> bool:

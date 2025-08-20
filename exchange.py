@@ -95,6 +95,7 @@ JOURNALING = "journaling"
 LONG = "long"
 SHORT = "short"
 
+
 class Exchange:
     """Exchange class to handle the exchange"""
 
@@ -219,9 +220,9 @@ class Exchange:
         """Check if the reaction to the liquidation is strong enough to place an
         order"""
 
-        if (
-            liquidation.direction == LONG and bid_or_ask > liquidation.candle.high
-        ) or (liquidation.direction == SHORT and bid_or_ask < liquidation.candle.low):
+        if (liquidation.direction == LONG and bid_or_ask > liquidation.candle.high) or (
+            liquidation.direction == SHORT and bid_or_ask < liquidation.candle.low
+        ):
             return True
         return False
 
@@ -391,7 +392,6 @@ class Exchange:
                 ),
             )
             await self.do_order_logging(
-                order,
                 liquidation,
                 bid_or_ask,
                 stoploss_price,
@@ -404,7 +404,6 @@ class Exchange:
 
     async def do_order_logging(
         self,
-        order: dict,
         liquidation: Liquidation,
         price: float,
         stoploss_price: float,
@@ -415,28 +414,22 @@ class Exchange:
         """Log the order details"""
 
         try:
-            order_info = order.get("info", {})
-            order_log_info = order_info | dict(
+            order_log_info = dict(
+                strategy_type=strategy_type,
                 direction=liquidation.direction,
-                price=price,
                 amount=amount,
+                price=price,
                 stoploss=stoploss_price,
                 takeprofit=takeprofit_price,
-                liquidation=liquidation.to_dict(),
-                strategy_type=strategy_type,
             )
             logger.info(f"{order_log_info=}")
-            if USE_DISCORD:
+            if USE_DISCORD and strategy_type != JOURNALING:
                 threading.Thread(
                     target=post_to_discord,
                     kwargs=dict(
                         messages=[f"{get_discord_table(order_log_info)}"],
                         channel_id=DISCORD_CHANNEL_TRADES_ID,
-                        at_everyone=(
-                            True
-                            if (USE_AT_EVERYONE and strategy_type != JOURNALING)
-                            else False
-                        ),
+                        at_everyone=True if USE_AT_EVERYONE else False,
                     ),
                 ).start()
 
