@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decouple import config
@@ -37,7 +38,8 @@ class Liquidation:
     def to_dict(self) -> dict:
         """Convert the Liquidation instance to a json dumpable dictionary."""
 
-        liquidation_dict = self.__dict__
+        liquidation_dict = deepcopy(self.__dict__)
+        liquidation_dict["amount"] = f"$ {round(self.amount, 2):,}"
         liquidation_dict["volume"] = self.candle.volume
         del liquidation_dict["candle"]
         return liquidation_dict
@@ -89,7 +91,10 @@ class LiquidationSet:
     def remove_old_liquidations(self, now: datetime) -> None:
         """Remove liquidations older than 10 minutes (5m + beginning of candle = 10)."""
 
-        for liquidation in self.liquidations:
-            now_rounded = now.replace(second=0, microsecond=0)
-            if liquidation.time < (now_rounded - timedelta(minutes=10)).timestamp():
-                self.liquidations.remove(liquidation)
+        try:
+            for liquidation in self.liquidations:
+                now_rounded = now.replace(second=0, microsecond=0)
+                if liquidation.time < (now_rounded - timedelta(minutes=10)).timestamp():
+                    self.liquidations.remove(liquidation)
+        except Exception as e:
+            logger.error(f"Error removing old liquidations: {e}")
