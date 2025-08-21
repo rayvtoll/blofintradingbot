@@ -100,7 +100,6 @@ async def main() -> None:
             kwargs=dict(
                 messages=[f"{info} with settings:\n{get_discord_table(DISCORD_SETTINGS)}"],
                 channel_id=DISCORD_CHANNEL_HEARTBEAT_ID,
-                at_everyone=True if USE_AT_EVERYONE else False,
             ),
         ).start()
 
