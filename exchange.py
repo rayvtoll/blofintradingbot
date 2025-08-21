@@ -421,6 +421,7 @@ class Exchange:
                 price=price,
                 stoploss=stoploss_price,
                 takeprofit=takeprofit_price,
+                reaction_to_liquidation=liquidation.to_dict(),
             )
             logger.info(f"{order_log_info=}")
             if USE_DISCORD and strategy_type != JOURNALING:
