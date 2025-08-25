@@ -415,12 +415,12 @@ class Exchange:
 
         try:
             order_log_info = dict(
-                strategy_type=strategy_type,
+                strategy_type=strategy_type.capitalize(),
                 direction=liquidation.direction,
-                amount=amount,
-                price=price,
-                stoploss=stoploss_price,
-                takeprofit=takeprofit_price,
+                amount=f"{amount} contract(s)",
+                price=f"$ {round(price, 2):,}",
+                stoploss=f"$ {round(stoploss_price, 2):,}",
+                takeprofit=f"$ {round(takeprofit_price, 2):,}",
                 reaction_to_liquidation=liquidation.to_dict(),
             )
             logger.info(f"{order_log_info=}")
