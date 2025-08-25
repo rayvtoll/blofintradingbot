@@ -24,6 +24,20 @@ def get_discord_table(obj: dict) -> str:
     return f"```{yaml.dump(obj, default_flow_style=False)}```"
 
 
+def get_formatted_unordered_list(obj: dict, nested: bool = False) -> str:
+    """Convert a dictionary to a discord friendly unordered list"""
+
+    formatted_string = ""
+    for key, value in obj.items():
+        if isinstance(value, dict):
+            formatted_string += f"\n**{key}**:\n{get_formatted_unordered_list(value)}\n"
+        elif isinstance(value, list):
+            formatted_string += f"- **{key}**: {', '.join(str(i) for i in value)}\n"
+        else:
+            formatted_string += f"- **{key}**: {value}\n"
+    return formatted_string
+
+
 def post_to_discord(
     messages: List[str], channel_id: int, at_everyone: bool = False
 ) -> None:

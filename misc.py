@@ -41,7 +41,8 @@ class Liquidation:
         liquidation_dict = deepcopy(self.__dict__)
         liquidation_dict["amount"] = f"$ {round(self.amount, 2):,}"
         liquidation_dict["volume"] = self.candle.volume
-        liquidation_dict["time"] = f"<t:{self.time}:f>"
+        # liquidation_dict["time"] = f"<t:{self.time}:f>"
+        del liquidation_dict["time"]
         del liquidation_dict["candle"]
         return liquidation_dict
 
