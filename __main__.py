@@ -15,7 +15,6 @@ if USE_DISCORD:
     )
     from discord_client import (
         post_to_discord,
-        USE_AT_EVERYONE,
         DISCORD_CHANNEL_HEARTBEAT_ID,
         DISCORD_CHANNEL_POSITIONS_ID,
     )
@@ -98,7 +97,9 @@ async def main() -> None:
         threading.Thread(
             target=post_to_discord,
             kwargs=dict(
-                messages=[f"{info} with settings:\n{get_discord_table(DISCORD_SETTINGS)}"],
+                messages=[
+                    f"{info} with settings:\n{get_discord_table(DISCORD_SETTINGS)}"
+                ],
                 channel_id=DISCORD_CHANNEL_HEARTBEAT_ID,
             ),
         ).start()
@@ -123,8 +124,8 @@ async def main() -> None:
 
             await sleep(0.99)  # prevent double processing
 
-        # send a hearbeat to discord every 4 hours
-        if now.hour % 4 == 0 and now.minute == 1 and now.second == 0:
+        # send a hearbeat to discord every 12 hours
+        if now.hour % 12 == 8 and now.minute == 1 and now.second == 0:
             if USE_DISCORD:
                 threading.Thread(
                     target=post_to_discord,
@@ -141,7 +142,13 @@ async def main() -> None:
             try:
                 positions = await exchange.exchange.fetch_positions(symbols=[TICKER])
                 exchange.positions = [
-                    position.get("info", {}) for position in positions
+                    {
+                        "amount": f"{position.get("info", {}).get("positions")} contract(s)",
+                        "direction": position.get("info", {}).get("positionSide", ""),
+                        "price": f"$ {round(float(position.get("info", {}).get("averagePrice", 0.0)), 2):,}",
+                        "liquidation_price": f"$ {round(float(position.get("info", {}).get("liquidationPrice", 0.0)), 2):,}",
+                    }
+                    for position in positions
                 ]
             except Exception as e:
                 logger.error(f"Error fetching positions: {e}")
@@ -152,7 +159,15 @@ async def main() -> None:
                 open_orders = await exchange.exchange.fetch_open_orders(
                     params={"tpsl": True}
                 )
-                open_orders_info = [order.get("info", {}) for order in open_orders]
+                open_orders_info = [
+                    {
+                        "amount": f"{order.get("info", {}).get("size")} contract(s)",
+                        "direction": order.get("info", {}).get("positionSide", ""),
+                        "stoploss": f"$ {round(float(order.get("info", {}).get("slTriggerPrice", 0.0)), 2):,}",
+                        "takeprofit": f"$ {round(float(order.get("info", {}).get("tpTriggerPrice", 0.0)), 2):,}",
+                    }
+                    for order in open_orders
+                ]
             except Exception as e:
                 logger.error(f"Error fetching open orders: {e}")
                 open_orders_info = []
@@ -161,9 +176,9 @@ async def main() -> None:
             if exchange.open_orders != open_orders_info:
                 exchange.open_orders = open_orders_info
                 open_positions_and_orders = (
-                    ["open_positions:"]
+                    ["Open Positions:"]
                     + [get_discord_table(position) for position in exchange.positions]
-                    + ["open_orders:"]
+                    + ["Open Orders:"]
                     + [get_discord_table(order) for order in exchange.open_orders]
                 )
                 logger.info(f"{open_positions_and_orders=}")
