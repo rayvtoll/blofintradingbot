@@ -1,4 +1,3 @@
-from asyncio import sleep
 import ccxt.pro as ccxt
 from coinalyze_scanner import CoinalyzeScanner
 from decouple import config, Csv
@@ -111,7 +110,8 @@ class Exchange:
         )
         self.liquidation_set: LiquidationSet = liquidation_set
         self.positions: List[dict] = []
-        self.open_orders: List[dict] = []
+        self.market_tpsl_orders: List[dict] = []
+        self.limit_orders: List[dict] = []
         self.scanner: CoinalyzeScanner = scanner
 
     async def get_open_positions(self) -> List[dict]:

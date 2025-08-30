@@ -154,12 +154,12 @@ async def main() -> None:
                 logger.error(f"Error fetching positions: {e}")
                 exchange.positions = []
 
-            # get open orders and compare to exchange.open_orders
+            # get open market tpsl orders and compare to exchange.open_orders
             try:
                 open_orders = await exchange.exchange.fetch_open_orders(
                     params={"tpsl": True}
                 )
-                open_orders_info = [
+                market_tpsl_orders_info = [
                     {
                         "amount": f"{order.get("info", {}).get("size")} contract(s)",
                         "direction": order.get("info", {}).get("positionSide", ""),
@@ -170,17 +170,47 @@ async def main() -> None:
                 ]
             except Exception as e:
                 logger.error(f"Error fetching open orders: {e}")
-                open_orders_info = []
+                market_tpsl_orders_info = []
+
+            # get open limit orders and compare to exchange.limit_orders
+            try:
+                open_orders = await exchange.exchange.fetch_open_orders()
+                limit_orders_info = [
+                    {
+                        "amount": f"{order.get("amount", 0.0)} contract(s)",
+                        "orderType": order.get("info", {}).get("orderType", ""),
+                        "direction": order.get("info", {}).get("side", ""),
+                        "price": f"$ {round(float(order.get("info", {}).get("price", 0.0)), 2):,}",
+                    }
+                    for order in open_orders
+                ]
+            except Exception as e:
+                logger.error(f"Error fetching open limit orders: {e}")
+                limit_orders_info = []
 
             # only log and post to discord if there are changes
-            if exchange.open_orders != open_orders_info:
-                exchange.open_orders = open_orders_info
-                open_positions_and_orders = (
-                    ["Open Positions:"]
-                    + [get_discord_table(position) for position in exchange.positions]
-                    + ["Open Orders:"]
-                    + [get_discord_table(order) for order in exchange.open_orders]
-                )
+            if (
+                exchange.market_tpsl_orders != market_tpsl_orders_info
+                or exchange.limit_orders != limit_orders_info
+            ):
+                exchange.market_tpsl_orders = market_tpsl_orders_info
+                exchange.limit_orders = limit_orders_info
+                if not any(
+                    exchange.market_tpsl_orders or exchange.limit_orders or exchange.positions
+                ):
+                    open_positions_and_orders = ["No open positions / orders."]
+                else:
+                    open_positions_and_orders = (
+                        ["Position(s):"]
+                        + [
+                            get_discord_table(position)
+                            for position in exchange.positions
+                        ]
+                        + ["Market TP/SL order(s):"]
+                        + [get_discord_table(order) for order in exchange.market_tpsl_orders]
+                        + ["Limit order(s):"]
+                        + [get_discord_table(order) for order in exchange.limit_orders]
+                    )
                 logger.info(f"{open_positions_and_orders=}")
                 if USE_DISCORD:
                     threading.Thread(
