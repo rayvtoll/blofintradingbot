@@ -163,8 +163,16 @@ async def main() -> None:
                     {
                         "amount": f"{order.get("info", {}).get("size")} contract(s)",
                         "direction": order.get("info", {}).get("positionSide", ""),
-                        "stoploss": f"$ {round(float(order.get("info", {}).get("slTriggerPrice", 0.0)), 2):,}",
-                        "takeprofit": f"$ {round(float(order.get("info", {}).get("tpTriggerPrice", 0.0)), 2):,}",
+                        "stoploss": (
+                            f"$ {round(float(order.get("info", {}).get("slTriggerPrice", 0.0)), 2):,}"
+                            if order.get("info", {}).get("slTriggerPrice")
+                            else "-"
+                        ),
+                        "takeprofit": (
+                            f"$ {round(float(order.get("info", {}).get("tpTriggerPrice", 0.0)), 2):,}"
+                            if order.get("info", {}).get("tpTriggerPrice")
+                            else "-"
+                        ),
                     }
                     for order in open_orders
                 ]
@@ -196,7 +204,9 @@ async def main() -> None:
                 exchange.market_tpsl_orders = market_tpsl_orders_info
                 exchange.limit_orders = limit_orders_info
                 if not any(
-                    exchange.market_tpsl_orders or exchange.limit_orders or exchange.positions
+                    exchange.market_tpsl_orders
+                    or exchange.limit_orders
+                    or exchange.positions
                 ):
                     open_positions_and_orders = ["No open positions / orders."]
                 else:
@@ -207,7 +217,10 @@ async def main() -> None:
                             for position in exchange.positions
                         ]
                         + ["Market TP/SL order(s):"]
-                        + [get_discord_table(order) for order in exchange.market_tpsl_orders]
+                        + [
+                            get_discord_table(order)
+                            for order in exchange.market_tpsl_orders
+                        ]
                         + ["Limit order(s):"]
                         + [get_discord_table(order) for order in exchange.limit_orders]
                     )
