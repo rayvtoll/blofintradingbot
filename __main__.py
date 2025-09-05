@@ -1,12 +1,15 @@
-from typing import List
-from discord_client import USE_DISCORD, get_discord_table
 from asyncio import run, sleep
-from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
+from copy import deepcopy
 from datetime import datetime, timedelta
-from exchange import Exchange, TICKER, LEVERAGE
 from logger import logger
 from misc import Liquidation, LiquidationSet
 import threading
+from typing import List
+
+from coinalyze_scanner import CoinalyzeScanner, COINALYZE_LIQUIDATION_URL
+from discord_client import USE_DISCORD, get_discord_table
+from exchange import Exchange, TICKER, LEVERAGE
+
 
 if USE_DISCORD:
     from coinalyze_scanner import (
@@ -235,11 +238,14 @@ async def main() -> None:
             await sleep(0.99)  # prevent double processing
 
         if USE_DISCORD and exchange.discord_message_queue:
+            message_queue = deepcopy(exchange.discord_message_queue)
+            exchange.discord_message_queue.clear()
             threading.Thread(
                 target=post_to_discord,
-                kwargs=dict(exchange=exchange),
+                kwargs=dict(message_queue=message_queue),
             ).start()
-            await sleep(5) # prevent double message posting
+            
+            await sleep(0.99) # prevent double message posting
 
         # sleep some just in case
         await sleep(0.01)

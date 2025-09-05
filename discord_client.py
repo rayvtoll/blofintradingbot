@@ -1,3 +1,4 @@
+from typing import List, Tuple
 from decouple import config
 import discord
 from logger import logger
@@ -37,7 +38,7 @@ def get_formatted_unordered_list(obj: dict, nested: bool = False) -> str:
     return formatted_string
 
 
-def post_to_discord(exchange) -> None:
+def post_to_discord(message_queue: List[Tuple[int, List[str], bool]]) -> None:
     """Post messages to discord and empty the message queue"""
 
     intents = discord.Intents.default()
@@ -47,13 +48,12 @@ def post_to_discord(exchange) -> None:
     @client.event
     async def on_ready():
         try:
-            for channel_id, messages, at_everyone in exchange.discord_message_queue:
+            for channel_id, messages, at_everyone in message_queue:
                 channel = client.get_channel(channel_id)
                 if at_everyone:
                     await channel.send(f"@everyone\n")
                 for message in messages:
                     await channel.send(f"{message}")
-            exchange.discord_message_queue = []
         except Exception as e:
             logger.error(f"Failed to post to Discord: {e}")
         finally:
