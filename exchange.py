@@ -401,6 +401,13 @@ class Exchange:
         """Log the order details"""
 
         try:
+            reaction_liquidation = deepcopy(liquidation)
+            
+            # reverse back the direction for logging
+            if strategy_type == REVERSED:
+                reaction_liquidation.direction = (
+                    LONG if liquidation.direction == SHORT else SHORT
+                )
             order_log_info = dict(
                 strategy_type=strategy_type.capitalize(),
                 direction=liquidation.direction,
@@ -408,7 +415,7 @@ class Exchange:
                 price=f"$ {round(price, 2):,}",
                 stoploss=f"$ {round(stoploss_price, 2):,}",
                 takeprofit=f"$ {round(takeprofit_price, 2):,}",
-                reaction_to_liquidation=liquidation.to_dict(),
+                reaction_to_liquidation=reaction_liquidation.to_dict(),
             )
             logger.info(f"{order_log_info=}")
             if USE_DISCORD and strategy_type != JOURNALING:
@@ -432,7 +439,9 @@ class Exchange:
                         take_profit_price=takeprofit_price,
                         stop_loss_price=stoploss_price,
                         liquidation_amount=int(
-                            self.liquidation_set.total_amount(liquidation.direction)
+                            self.liquidation_set.total_amount(
+                                reaction_liquidation.direction
+                            )
                         ),
                         strategy_type=strategy_type,
                         nr_of_liquidations=liquidation.nr_of_liquidations,
