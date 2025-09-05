@@ -33,9 +33,9 @@ BLOFIN_API_KEY = config("BLOFIN_API_KEY")
 BLOFIN_PASSPHRASE = config("BLOFIN_PASSPHRASE")
 
 # trade settings
-LEVERAGE = config("LEVERAGE", cast=int, default=8)
+LEVERAGE = config("LEVERAGE", cast=int, default=12)
 logger.info(f"{LEVERAGE=}")
-POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=float, default=1.5)
+POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=float, default=1)
 logger.info(f"{POSITION_PERCENTAGE=}")
 
 # live strategy
@@ -255,29 +255,6 @@ class Exchange:
         # check if we are in trading hours and days
         if self.scanner.now.weekday() not in days or self.scanner.now.hour not in hours:
             return False
-
-        for position in self.positions:
-            if position.get("side") != liquidation.direction:
-                continue
-
-            # check if there is another journaling position or a live strategy position
-            if strategy_type != JOURNALING:
-                amount = amount - position.get("contracts", 0)
-            if amount < 0.1:
-                logger.info(
-                    f"Not enough remaining amount for {strategy_type} strategy, skipping order"
-                )
-                if USE_DISCORD:
-                    self.discord_message_queue.append(
-                        (
-                            DISCORD_CHANNEL_TRADES_ID,
-                            [
-                                f"Already in position and not enough remaining amount for {strategy_type} strategy, skipping order"
-                            ],
-                            False,
-                        )
-                    )
-                return False
 
         await self.market_order_placement(
             amount=amount,
