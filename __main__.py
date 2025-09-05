@@ -25,11 +25,11 @@ if USE_DISCORD:
         LIVE_TP_PERCENTAGE,
         LIVE_TRADING_DAYS,
         LIVE_TRADING_HOURS,
-        USE_GREY_STRATEGY,
-        GREY_SL_PERCENTAGE,
-        GREY_TP_PERCENTAGE,
-        GREY_TRADING_DAYS,
-        GREY_TRADING_HOURS,
+        USE_REVERSED_STRATEGY,
+        REVERSED_SL_PERCENTAGE,
+        REVERSED_TP_PERCENTAGE,
+        REVERSED_TRADING_DAYS,
+        REVERSED_TRADING_HOURS,
         USE_JOURNALING_STRATEGY,
         JOURNALING_SL_PERCENTAGE,
         JOURNALING_TP_PERCENTAGE,
@@ -52,11 +52,11 @@ if USE_DISCORD:
         DISCORD_SETTINGS["live_trading_days"] = LIVE_TRADING_DAYS
         DISCORD_SETTINGS["live_trading_hours"] = LIVE_TRADING_HOURS
 
-    if USE_GREY_STRATEGY:
-        DISCORD_SETTINGS["grey_sl_percentage"] = GREY_SL_PERCENTAGE
-        DISCORD_SETTINGS["grey_tp_percentage"] = GREY_TP_PERCENTAGE
-        DISCORD_SETTINGS["grey_trading_days"] = GREY_TRADING_DAYS
-        DISCORD_SETTINGS["grey_trading_hours"] = GREY_TRADING_HOURS
+    if USE_REVERSED_STRATEGY:
+        DISCORD_SETTINGS["reversed_sl_percentage"] = REVERSED_SL_PERCENTAGE
+        DISCORD_SETTINGS["reversed_tp_percentage"] = REVERSED_TP_PERCENTAGE
+        DISCORD_SETTINGS["reversed_trading_days"] = REVERSED_TRADING_DAYS
+        DISCORD_SETTINGS["reversed_trading_hours"] = REVERSED_TRADING_HOURS
 
     if USE_JOURNALING_STRATEGY:
         DISCORD_SETTINGS["journaling_sl_percentage"] = JOURNALING_SL_PERCENTAGE
@@ -77,6 +77,7 @@ async def main() -> None:
 
     # enable exchange
     exchange = Exchange(LIQUIDATION_SET, scanner)
+    scanner.exchange = exchange
     exchange.positions = await exchange.get_open_positions()
 
     for direction in ["long", "short"]:
@@ -94,15 +95,13 @@ async def main() -> None:
     )
     if USE_DISCORD:
         DISCORD_SETTINGS["symbols"] = scanner.symbols.split(",")
-        threading.Thread(
-            target=post_to_discord,
-            kwargs=dict(
-                messages=[
-                    f"{info} with settings:\n{get_discord_table(DISCORD_SETTINGS)}"
-                ],
-                channel_id=DISCORD_CHANNEL_HEARTBEAT_ID,
-            ),
-        ).start()
+        exchange.discord_message_queue.append(
+            (
+                DISCORD_CHANNEL_HEARTBEAT_ID,
+                [f"{info} with settings:\n{get_discord_table(DISCORD_SETTINGS)}"],
+                False,
+            )
+        )
 
     while True:
         now = datetime.now()
@@ -127,13 +126,9 @@ async def main() -> None:
         # send a hearbeat to discord every 12 hours
         if now.hour % 12 == 8 and now.minute == 1 and now.second == 0:
             if USE_DISCORD:
-                threading.Thread(
-                    target=post_to_discord,
-                    kwargs=dict(
-                        messages=["."],
-                        channel_id=DISCORD_CHANNEL_HEARTBEAT_ID,
-                    ),
-                ).start()
+                exchange.discord_message_queue.append(
+                    (DISCORD_CHANNEL_HEARTBEAT_ID, ["."], False)
+                )
 
             await sleep(0.99)  # prevent double processing
 
@@ -226,13 +221,9 @@ async def main() -> None:
                     )
                 logger.info(f"{open_positions_and_orders=}")
                 if USE_DISCORD:
-                    threading.Thread(
-                        target=post_to_discord,
-                        kwargs=dict(
-                            messages=open_positions_and_orders,
-                            channel_id=DISCORD_CHANNEL_POSITIONS_ID,
-                        ),
-                    ).start()
+                    exchange.discord_message_queue.append(
+                        (DISCORD_CHANNEL_POSITIONS_ID, open_positions_and_orders, False)
+                    )
 
             await sleep(0.99)  # prevent double processing
 
@@ -242,6 +233,13 @@ async def main() -> None:
             await exchange.set_position_size()
 
             await sleep(0.99)  # prevent double processing
+
+        if USE_DISCORD and exchange.discord_message_queue:
+            threading.Thread(
+                target=post_to_discord,
+                kwargs=dict(exchange=exchange),
+            ).start()
+            await sleep(5) # prevent double message posting
 
         # sleep some just in case
         await sleep(0.01)

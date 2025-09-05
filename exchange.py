@@ -1,11 +1,11 @@
+from copy import deepcopy
 import ccxt.pro as ccxt
 from coinalyze_scanner import CoinalyzeScanner
 from decouple import config, Csv
 from logger import logger
 from misc import Candle, Liquidation, LiquidationSet
 import requests
-import threading
-from typing import List
+from typing import List, Tuple
 
 from discord_client import USE_DISCORD
 
@@ -14,7 +14,6 @@ TICKER: str = "BTC/USDT:USDT"
 
 if USE_DISCORD:
     from discord_client import (
-        post_to_discord,
         get_discord_table,
         USE_AT_EVERYONE,
         DISCORD_CHANNEL_TRADES_ID,
@@ -44,28 +43,30 @@ USE_LIVE_STRATEGY = config("USE_LIVE_STRATEGY", cast=bool, default=True)
 logger.info(f"{USE_LIVE_STRATEGY=}")
 LIVE_SL_PERCENTAGE = config("LIVE_SL_PERCENTAGE", cast=float, default=0.475)
 logger.info(f"{LIVE_SL_PERCENTAGE=}")
-LIVE_TP_PERCENTAGE = config("LIVE_TP_PERCENTAGE", cast=float, default=5.0)
+LIVE_TP_PERCENTAGE = config("LIVE_TP_PERCENTAGE", cast=float, default=4.0)
 logger.info(f"{LIVE_TP_PERCENTAGE=}")
-LIVE_TRADING_DAYS = config("LIVE_TRADING_DAYS", cast=Csv(int), default="0,1,3,4,5,6")
+LIVE_TRADING_DAYS = config("LIVE_TRADING_DAYS", cast=Csv(int), default="0,1,2,3,4,5,6")
 logger.info(f"{LIVE_TRADING_DAYS=}")
 LIVE_TRADING_HOURS = config(
-    "LIVE_TRADING_HOURS", cast=Csv(int), default="2,3,4,14,15,17,18"
+    "LIVE_TRADING_HOURS", cast=Csv(int), default="23,0,1,2,3,17,18,19,20"
 )
 logger.info(f"{LIVE_TRADING_HOURS=}")
 
-# grey strategy
-USE_GREY_STRATEGY = config("USE_GREY_STRATEGY", cast=bool, default=True)
-logger.info(f"{USE_GREY_STRATEGY=}")
-GREY_SL_PERCENTAGE = config("GREY_SL_PERCENTAGE", cast=float, default=0.475)
-logger.info(f"{GREY_SL_PERCENTAGE=}")
-GREY_TP_PERCENTAGE = config("GREY_TP_PERCENTAGE", cast=float, default=0.5)
-logger.info(f"{GREY_TP_PERCENTAGE=}")
-GREY_TRADING_DAYS = config("GREY_TRADING_DAYS", cast=Csv(int), default="0,1,2,3,4,5,6")
-logger.info(f"{GREY_TRADING_DAYS=}")
-GREY_TRADING_HOURS = config(
-    "GREY_TRADING_HOURS", cast=Csv(int), default="1,2,3,4,14,15,16,17,18"
+# reversed strategy
+USE_REVERSED_STRATEGY = config("USE_REVERSED_STRATEGY", cast=bool, default=True)
+logger.info(f"{USE_REVERSED_STRATEGY=}")
+REVERSED_SL_PERCENTAGE = config("REVERSED_SL_PERCENTAGE", cast=float, default=0.475)
+logger.info(f"{REVERSED_SL_PERCENTAGE=}")
+REVERSED_TP_PERCENTAGE = config("REVERSED_TP_PERCENTAGE", cast=float, default=4)
+logger.info(f"{REVERSED_TP_PERCENTAGE=}")
+REVERSED_TRADING_DAYS = config(
+    "REVERSED_TRADING_DAYS", cast=Csv(int), default="0,1,2,3,4,5,6"
 )
-logger.info(f"{GREY_TRADING_HOURS=}")
+logger.info(f"{REVERSED_TRADING_DAYS=}")
+REVERSED_TRADING_HOURS = config(
+    "REVERSED_TRADING_HOURS", cast=Csv(int), default="4,5,6,14,15,16"
+)
+logger.info(f"{REVERSED_TRADING_HOURS=}")
 
 # journaling strategy
 USE_JOURNALING_STRATEGY = config("USE_JOURNALING_STRATEGY", cast=bool, default=True)
@@ -87,7 +88,7 @@ logger.info(f"{JOURNALING_TRADING_HOURS=}")
 
 # Strategy types
 LIVE = "live"
-GREY = "grey"
+REVERSED = "reversed"
 JOURNALING = "journaling"
 
 # Order Directions
@@ -113,6 +114,7 @@ class Exchange:
         self.market_tpsl_orders: List[dict] = []
         self.limit_orders: List[dict] = []
         self.scanner: CoinalyzeScanner = scanner
+        self.discord_message_queue: List[Tuple[int, List[str], bool]] = []
 
     async def get_open_positions(self) -> List[dict]:
         """Get open positions for the exchange"""
@@ -204,14 +206,25 @@ class Exchange:
             ):
                 continue
 
+            trade = False
+
             # if order is created exit loop
-            if await self.apply_live_strategy(liquidation, bid_or_ask):
+            if USE_LIVE_STRATEGY and await self.apply_live_strategy(
+                liquidation, bid_or_ask
+            ):
+                trade = True
+
+            if USE_REVERSED_STRATEGY and await self.apply_reversed_strategy(
+                liquidation, bid_or_ask
+            ):
+                trade = True
+
+            if trade:
                 break
 
-            if await self.apply_grey_strategy(liquidation, bid_or_ask):
-                break
-
-            if await self.journaling_strategy(liquidation, bid_or_ask):
+            if USE_JOURNALING_STRATEGY and await self.journaling_strategy(
+                liquidation, bid_or_ask
+            ):
                 break
 
     async def reaction_to_liquidation_is_strong(
@@ -255,15 +268,15 @@ class Exchange:
                     f"Not enough remaining amount for {strategy_type} strategy, skipping order"
                 )
                 if USE_DISCORD:
-                    threading.Thread(
-                        target=post_to_discord,
-                        kwargs=dict(
-                            messages=[
+                    self.discord_message_queue.append(
+                        (
+                            DISCORD_CHANNEL_TRADES_ID,
+                            [
                                 f"Already in position and not enough remaining amount for {strategy_type} strategy, skipping order"
                             ],
-                            channel_id=DISCORD_CHANNEL_TRADES_ID,
-                        ),
-                    ).start()
+                            False,
+                        )
+                    )
                 return False
 
         await self.market_order_placement(
@@ -282,9 +295,6 @@ class Exchange:
         """Apply the journaling strategy to create datapoints for the journal with
         minimal risk"""
 
-        if not USE_JOURNALING_STRATEGY:
-            return False
-
         return await self.apply_strategy(
             liquidation=liquidation,
             bid_or_ask=bid_or_ask,
@@ -296,32 +306,32 @@ class Exchange:
             takeprofit_percentage=JOURNALING_TP_PERCENTAGE,
         )
 
-    async def apply_grey_strategy(
+    async def apply_reversed_strategy(
         self, liquidation: Liquidation, bid_or_ask: float
     ) -> bool:
-        """Apply the grey strategy during trading hours and days"""
+        """Apply the reversed strategy during trading hours and days"""
 
-        if not USE_GREY_STRATEGY:
-            return False
+        # invert direction for reversed strategy
+        reversed_liquidation = deepcopy(liquidation)
+        reversed_liquidation.direction = (
+            LONG if liquidation.direction == SHORT else SHORT
+        )
 
         return await self.apply_strategy(
-            liquidation=liquidation,
+            liquidation=reversed_liquidation,
             bid_or_ask=bid_or_ask,
-            days=GREY_TRADING_DAYS,
-            hours=GREY_TRADING_HOURS,
-            amount=round(self.position_size / 2, 1),
-            strategy_type=GREY,
-            stoploss_percentage=GREY_SL_PERCENTAGE,
-            takeprofit_percentage=GREY_TP_PERCENTAGE,
+            days=REVERSED_TRADING_DAYS,
+            hours=REVERSED_TRADING_HOURS,
+            amount=self.position_size,
+            strategy_type=REVERSED,
+            stoploss_percentage=REVERSED_SL_PERCENTAGE,
+            takeprofit_percentage=REVERSED_TP_PERCENTAGE,
         )
 
     async def apply_live_strategy(
         self, liquidation: Liquidation, bid_or_ask: float
     ) -> bool:
         """Apply the live strategy during trading hours and days"""
-
-        if not USE_LIVE_STRATEGY:
-            return False
 
         return await self.apply_strategy(
             liquidation=liquidation,
@@ -425,14 +435,13 @@ class Exchange:
             )
             logger.info(f"{order_log_info=}")
             if USE_DISCORD and strategy_type != JOURNALING:
-                threading.Thread(
-                    target=post_to_discord,
-                    kwargs=dict(
-                        messages=[f"{get_discord_table(order_log_info)}"],
-                        channel_id=DISCORD_CHANNEL_TRADES_ID,
-                        at_everyone=True if USE_AT_EVERYONE else False,
-                    ),
-                ).start()
+                self.discord_message_queue.append(
+                    (
+                        DISCORD_CHANNEL_TRADES_ID,
+                        [f"{get_discord_table(order_log_info)}"],
+                        True if USE_AT_EVERYONE else False,
+                    )
+                )
 
             if USE_AUTO_JOURNALING:
                 response = None
@@ -448,6 +457,7 @@ class Exchange:
                         liquidation_amount=int(
                             self.liquidation_set.total_amount(liquidation.direction)
                         ),
+                        strategy_type=strategy_type,
                         nr_of_liquidations=liquidation.nr_of_liquidations,
                     )
                     response = requests.post(

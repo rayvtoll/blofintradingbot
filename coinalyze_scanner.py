@@ -3,16 +3,12 @@ from decouple import config
 from functools import cached_property
 
 from discord_client import USE_DISCORD
+
 if USE_DISCORD:
-    from discord_client import (
-        post_to_discord,
-        get_discord_table,
-        DISCORD_CHANNEL_LIQUIDATIONS_ID,
-    )
+    from discord_client import get_discord_table, DISCORD_CHANNEL_LIQUIDATIONS_ID
 from logger import logger
 from misc import Candle, Liquidation, LiquidationSet
 import requests
-import threading as Threading
 from typing import List
 
 
@@ -35,6 +31,7 @@ class CoinalyzeScanner:
     def __init__(self, now: datetime, liquidation_set: LiquidationSet) -> None:
         self.now = now
         self.liquidation_set = liquidation_set
+        self.exchange = None
 
     @property
     def params(self) -> dict:
@@ -107,16 +104,16 @@ class CoinalyzeScanner:
                 self.liquidation_set.liquidations.insert(0, short_liquidation)
                 discord_liquidations.append(short_liquidation)
         if USE_DISCORD and discord_liquidations:
-            Threading.Thread(
-                target=post_to_discord,
-                kwargs=dict(
-                    messages=[
+            self.exchange.discord_message_queue.append(
+                (
+                    DISCORD_CHANNEL_LIQUIDATIONS_ID,
+                    [
                         get_discord_table(liquidation.to_dict())
                         for liquidation in discord_liquidations
                     ],
-                    channel_id=DISCORD_CHANNEL_LIQUIDATIONS_ID,
-                ),
-            ).start()
+                    False,
+                )
+            )
 
     async def handle_coinalyze_url(
         self, url: str, include_params: bool = True, symbols: bool = False

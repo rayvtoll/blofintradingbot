@@ -1,6 +1,6 @@
 # BloFin Trading Bot
 
-Fully automatic trading bot for Blofin Futures using liquidations from Coinalyze to counter trade as a strategy. The bot currently uses 3 strategies: live, grey and journaling. The position sizes for these strategies are full, half and minimal size respectively.
+Fully automatic trading bot for Blofin Futures using liquidations from Coinalyze to counter trade as a strategy. The bot currently uses 3 strategies: live, reversed and journaling. The position sizes for these strategies are full for live and reversed, but minimal size for journaling.
 
 ## To get started
 
@@ -20,7 +20,7 @@ Have the following variables in your .env file
     BLOFIN_SECRET_KEY=
     BLOFIN_PASSPHRASE=
 
-If you want to customize the different strategy (LIVE, GREY, JOURNALING) variables add the following to your liking:
+If you want to customize the different strategy (LIVE, REVERSED, JOURNALING) variables add the following to your liking:
 
     USE_[STRATEGY]_STRATEGY=
     [STRATEGY]_SL_PERCENTAGE=
@@ -29,7 +29,7 @@ If you want to customize the different strategy (LIVE, GREY, JOURNALING) variabl
     [STRATEGY]_TRADING_HOURS=
 
 
-If you want to use a discord bot you add the following variables:
+If you want to use a discord bot you must add the following variables:
 
     USE_DISCORD=true
     DISCORD_PRIVATE_KEY=
