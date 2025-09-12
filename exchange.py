@@ -41,21 +41,21 @@ logger.info(f"{POSITION_PERCENTAGE=}")
 # live strategy
 USE_LIVE_STRATEGY = config("USE_LIVE_STRATEGY", cast=bool, default=True)
 logger.info(f"{USE_LIVE_STRATEGY=}")
-LIVE_SL_PERCENTAGE = config("LIVE_SL_PERCENTAGE", cast=float, default=0.475)
+LIVE_SL_PERCENTAGE = config("LIVE_SL_PERCENTAGE", cast=float, default=0.8)
 logger.info(f"{LIVE_SL_PERCENTAGE=}")
 LIVE_TP_PERCENTAGE = config("LIVE_TP_PERCENTAGE", cast=float, default=4.0)
 logger.info(f"{LIVE_TP_PERCENTAGE=}")
 LIVE_TRADING_DAYS = config("LIVE_TRADING_DAYS", cast=Csv(int), default="0,1,2,3,4,5,6")
 logger.info(f"{LIVE_TRADING_DAYS=}")
 LIVE_TRADING_HOURS = config(
-    "LIVE_TRADING_HOURS", cast=Csv(int), default="23,0,1,2,3,17,18,19,20"
+    "LIVE_TRADING_HOURS", cast=Csv(int), default="23,0,1,2,3,4,17,18,19,20"
 )
 logger.info(f"{LIVE_TRADING_HOURS=}")
 
 # reversed strategy
 USE_REVERSED_STRATEGY = config("USE_REVERSED_STRATEGY", cast=bool, default=True)
 logger.info(f"{USE_REVERSED_STRATEGY=}")
-REVERSED_SL_PERCENTAGE = config("REVERSED_SL_PERCENTAGE", cast=float, default=0.475)
+REVERSED_SL_PERCENTAGE = config("REVERSED_SL_PERCENTAGE", cast=float, default=0.8)
 logger.info(f"{REVERSED_SL_PERCENTAGE=}")
 REVERSED_TP_PERCENTAGE = config("REVERSED_TP_PERCENTAGE", cast=float, default=4)
 logger.info(f"{REVERSED_TP_PERCENTAGE=}")
@@ -64,16 +64,16 @@ REVERSED_TRADING_DAYS = config(
 )
 logger.info(f"{REVERSED_TRADING_DAYS=}")
 REVERSED_TRADING_HOURS = config(
-    "REVERSED_TRADING_HOURS", cast=Csv(int), default="4,5,6,14,15,16"
+    "REVERSED_TRADING_HOURS", cast=Csv(int), default="5,6,14,15,16"
 )
 logger.info(f"{REVERSED_TRADING_HOURS=}")
 
 # journaling strategy
 USE_JOURNALING_STRATEGY = config("USE_JOURNALING_STRATEGY", cast=bool, default=True)
 logger.info(f"{USE_JOURNALING_STRATEGY=}")
-JOURNALING_SL_PERCENTAGE = config("JOURNALING_SL_PERCENTAGE", cast=float, default=0.475)
+JOURNALING_SL_PERCENTAGE = config("JOURNALING_SL_PERCENTAGE", cast=float, default=0.8)
 logger.info(f"{JOURNALING_SL_PERCENTAGE=}")
-JOURNALING_TP_PERCENTAGE = config("JOURNALING_TP_PERCENTAGE", cast=float, default=0.5)
+JOURNALING_TP_PERCENTAGE = config("JOURNALING_TP_PERCENTAGE", cast=float, default=4)
 logger.info(f"{JOURNALING_TP_PERCENTAGE=}")
 JOURNALING_TRADING_DAYS = config(
     "JOURNALING_TRADING_DAYS", cast=Csv(int), default="0,1,2,3,4,5,6"
