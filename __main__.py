@@ -12,15 +12,8 @@ from exchange import Exchange, TICKER, LEVERAGE
 
 
 if USE_DISCORD:
-    from coinalyze_scanner import (
-        INTERVAL,
-        N_MINUTES_TIMEDELTA,
-    )
-    from discord_client import (
-        post_to_discord,
-        DISCORD_CHANNEL_HEARTBEAT_ID,
-        DISCORD_CHANNEL_POSITIONS_ID,
-    )
+    from coinalyze_scanner import INTERVAL, N_MINUTES_TIMEDELTA
+    from discord_client import post_to_discord, DISCORD_CHANNEL_HEARTBEAT_ID
     from exchange import (
         POSITION_PERCENTAGE,
         USE_LIVE_STRATEGY,
@@ -81,7 +74,6 @@ async def main() -> None:
     # enable exchange
     exchange = Exchange(LIQUIDATION_SET, scanner)
     scanner.exchange = exchange
-    exchange.positions = await exchange.get_open_positions()
 
     for direction in ["long", "short"]:
         await exchange.set_leverage(
@@ -110,7 +102,12 @@ async def main() -> None:
         now = datetime.now()
 
         if (now.minute % 5 == 0 and now.second == 0) or first_run:
-            first_run = False
+
+            # disable first_run if needed
+            if first_run:
+                first_run = False
+
+            # update scanner time
             scanner.now = now
 
             # run strategy for the exchange on LIQUIDATIONS list
@@ -121,133 +118,51 @@ async def main() -> None:
                 await exchange.get_last_candle(),
                 await scanner.handle_coinalyze_url(COINALYZE_LIQUIDATION_URL),
             )
+
+            # log liquidations if any
             if LIQUIDATIONS:
                 logger.info(f"{LIQUIDATIONS=}")
 
-            await sleep(0.99)  # prevent double processing
-
-        # send a hearbeat to discord every 12 hours
-        if now.hour % 12 == 8 and now.minute == 1 and now.second == 0:
-            if USE_DISCORD:
-                exchange.discord_message_queue.append(
-                    (DISCORD_CHANNEL_HEARTBEAT_ID, ["."], False)
-                )
-
-            await sleep(0.99)  # prevent double processing
+            await sleep(0.99)
 
         if now.minute % 5 == 3 and now.second == 0:
-            # get positions info and set exchange.positions
-            try:
-                positions = await exchange.exchange.fetch_positions(symbols=[TICKER])
-                exchange.positions = [
-                    {
-                        "amount": f"{position.get("info", {}).get("positions")} contract(s)",
-                        "direction": position.get("info", {}).get("positionSide", ""),
-                        "price": f"$ {round(float(position.get("info", {}).get("averagePrice", 0.0)), 2):,}",
-                        "liquidation_price": f"$ {round(float(position.get("info", {}).get("liquidationPrice", 0.0)), 2):,}",
-                    }
-                    for position in positions
-                ]
-            except Exception as e:
-                logger.error(f"Error fetching positions: {e}")
-                exchange.positions = []
 
-            # get open market tpsl orders and compare to exchange.open_orders
-            try:
-                open_orders = await exchange.exchange.fetch_open_orders(
-                    params={"tpsl": True}
-                )
-                market_tpsl_orders_info = [
-                    {
-                        "amount": f"{order.get("info", {}).get("size")} contract(s)",
-                        "direction": order.get("info", {}).get("positionSide", ""),
-                        "stoploss": (
-                            f"$ {round(float(order.get("info", {}).get("slTriggerPrice", 0.0)), 2):,}"
-                            if order.get("info", {}).get("slTriggerPrice")
-                            else "-"
-                        ),
-                        "takeprofit": (
-                            f"$ {round(float(order.get("info", {}).get("tpTriggerPrice", 0.0)), 2):,}"
-                            if order.get("info", {}).get("tpTriggerPrice")
-                            else "-"
-                        ),
-                    }
-                    for order in open_orders
-                ]
-            except Exception as e:
-                logger.error(f"Error fetching open orders: {e}")
-                market_tpsl_orders_info = []
+            # fetch open positions and orders from the exchange
+            await exchange.get_open_positions()
 
-            # get open limit orders and compare to exchange.limit_orders
-            try:
-                open_orders = await exchange.exchange.fetch_open_orders()
-                limit_orders_info = [
-                    {
-                        "amount": f"{order.get("amount", 0.0)} contract(s)",
-                        "orderType": order.get("info", {}).get("orderType", ""),
-                        "direction": order.get("info", {}).get("side", ""),
-                        "price": f"$ {round(float(order.get("info", {}).get("price", 0.0)), 2):,}",
-                    }
-                    for order in open_orders
-                ]
-            except Exception as e:
-                logger.error(f"Error fetching open limit orders: {e}")
-                limit_orders_info = []
-
-            # only log and post to discord if there are changes
-            if (
-                exchange.market_tpsl_orders != market_tpsl_orders_info
-                or exchange.limit_orders != limit_orders_info
-            ):
-                exchange.market_tpsl_orders = market_tpsl_orders_info
-                exchange.limit_orders = limit_orders_info
-                if not any(
-                    exchange.market_tpsl_orders
-                    or exchange.limit_orders
-                    or exchange.positions
-                ):
-                    open_positions_and_orders = ["No open positions / orders."]
-                else:
-                    open_positions_and_orders = (
-                        ["Position(s):"]
-                        + [
-                            get_discord_table(position)
-                            for position in exchange.positions
-                        ]
-                        + ["Market TP/SL order(s):"]
-                        + [
-                            get_discord_table(order)
-                            for order in exchange.market_tpsl_orders
-                        ]
-                        + ["Limit order(s):"]
-                        + [get_discord_table(order) for order in exchange.limit_orders]
-                    )
-                logger.info(f"{open_positions_and_orders=}")
-                if USE_DISCORD:
-                    exchange.discord_message_queue.append(
-                        (DISCORD_CHANNEL_POSITIONS_ID, open_positions_and_orders, False)
-                    )
-
-            await sleep(0.99)  # prevent double processing
+            await sleep(0.99)
 
         if now.minute % 5 == 4 and now.second == 0:
-            exchange.liquidation_set.remove_old_liquidations(now + timedelta(minutes=1))
-            exchange.positions = await exchange.get_open_positions()
-            await exchange.set_position_size()
 
-            await sleep(0.99)  # prevent double processing
+            # remove old liquidations from the LIQUIDATIONS list
+            exchange.liquidation_set.remove_old_liquidations(now + timedelta(minutes=1))
+
+            # recalculate position sizes based on current balance
+            await exchange.set_position_sizes()
+
+            await sleep(0.99)
+
+        if USE_DISCORD and (now.hour % 12 == 8 and now.minute == 1 and now.second == 0):
+
+            # send heartbeat message to discord
+            exchange.discord_message_queue.append(
+                (DISCORD_CHANNEL_HEARTBEAT_ID, ["."], False)
+            )
+
+            await sleep(0.99)
 
         if USE_DISCORD and exchange.discord_message_queue:
+
+            # post messages to discord from the queue
             message_queue = deepcopy(exchange.discord_message_queue)
             exchange.discord_message_queue.clear()
             threading.Thread(
                 target=post_to_discord,
                 kwargs=dict(message_queue=message_queue),
             ).start()
-            
-            await sleep(0.99) # prevent double message posting
 
-        # sleep some just in case
+            await sleep(0.99)
+
         await sleep(0.01)
 
 

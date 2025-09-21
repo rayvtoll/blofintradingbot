@@ -1,6 +1,6 @@
-from copy import deepcopy
 import ccxt.pro as ccxt
 from coinalyze_scanner import CoinalyzeScanner
+from copy import deepcopy
 from decouple import config, Csv
 from logger import logger
 from misc import Candle, Liquidation, LiquidationSet
@@ -17,6 +17,7 @@ if USE_DISCORD:
         get_discord_table,
         USE_AT_EVERYONE,
         DISCORD_CHANNEL_TRADES_ID,
+        DISCORD_CHANNEL_POSITIONS_ID,
     )
 
 USE_AUTO_JOURNALING = config("USE_AUTO_JOURNALING", cast=bool, default=False)
@@ -117,16 +118,89 @@ class Exchange:
         self.discord_message_queue: List[Tuple[int, List[str], bool]] = []
 
     async def get_open_positions(self) -> List[dict]:
-        """Get open positions for the exchange"""
+        """Get open positions from the exchange"""
 
+        # get open positions info
         try:
-            positions: List[dict] = await self.exchange.fetch_positions(
-                symbols=[TICKER]
-            )
+            positions = await self.exchange.fetch_positions(symbols=[TICKER])
+            open_positions = [
+                {
+                    "amount": f"{position.get("info", {}).get("positions")} contract(s)",
+                    "direction": position.get("info", {}).get("positionSide", ""),
+                    "price": f"$ {round(float(position.get("info", {}).get("averagePrice", 0.0)), 2):,}",
+                    "liquidation_price": f"$ {round(float(position.get("info", {}).get("liquidationPrice", 0.0)), 2):,}",
+                }
+                for position in positions
+            ]
         except Exception as e:
             logger.error(f"Error fetching positions: {e}")
-            positions = []
-        return positions
+            open_positions = []
+
+        # get open market tpsl orders
+        try:
+            open_orders = await self.exchange.fetch_open_orders(params={"tpsl": True})
+            market_tpsl_orders_info = [
+                {
+                    "amount": f"{order.get("info", {}).get("size")} contract(s)",
+                    "direction": order.get("info", {}).get("positionSide", ""),
+                    "stoploss": (
+                        f"$ {round(float(order.get("info", {}).get("slTriggerPrice", 0.0)), 2):,}"
+                        if order.get("info", {}).get("slTriggerPrice")
+                        else "-"
+                    ),
+                    "takeprofit": (
+                        f"$ {round(float(order.get("info", {}).get("tpTriggerPrice", 0.0)), 2):,}"
+                        if order.get("info", {}).get("tpTriggerPrice")
+                        else "-"
+                    ),
+                }
+                for order in open_orders
+            ]
+        except Exception as e:
+            logger.error(f"Error fetching open orders: {e}")
+            market_tpsl_orders_info = []
+
+        # get open limit orders
+        try:
+            open_orders = await self.exchange.fetch_open_orders()
+            limit_orders_info = [
+                {
+                    "amount": f"{order.get("amount", 0.0)} contract(s)",
+                    "orderType": order.get("info", {}).get("orderType", ""),
+                    "direction": order.get("info", {}).get("side", ""),
+                    "price": f"$ {round(float(order.get("info", {}).get("price", 0.0)), 2):,}",
+                }
+                for order in open_orders
+            ]
+        except Exception as e:
+            logger.error(f"Error fetching open limit orders: {e}")
+            limit_orders_info = []
+
+        # only log and post to discord if there are changes
+        if (
+            self.positions != open_positions
+            or self.market_tpsl_orders != market_tpsl_orders_info
+            or self.limit_orders != limit_orders_info
+        ):
+            self.market_tpsl_orders = market_tpsl_orders_info
+            self.limit_orders = limit_orders_info
+            self.positions = open_positions
+            if not any(self.market_tpsl_orders or self.limit_orders or self.positions):
+                open_positions_and_orders = ["No open positions / orders."]
+            else:
+                open_positions_and_orders = (
+                    ["Position(s):"]
+                    + [get_discord_table(position) for position in self.positions]
+                    + ["Market TP/SL order(s):"]
+                    + [get_discord_table(order) for order in self.market_tpsl_orders]
+                    + ["Limit order(s):"]
+                    + [get_discord_table(order) for order in self.limit_orders]
+                )
+            logger.info(f"{open_positions_and_orders=}")
+            if USE_DISCORD:
+                self.discord_message_queue.append(
+                    (DISCORD_CHANNEL_POSITIONS_ID, open_positions_and_orders, False)
+                )
 
     async def set_leverage(self, symbol: str, leverage: int, direction: str) -> None:
         """Set the leverage for the exchange"""
@@ -160,34 +234,83 @@ class Exchange:
             logger.error(f"Error fetching ohlcv: {e}")
             return None
 
-    async def set_position_size(self) -> None:
+    async def set_position_sizes(self) -> None:
         """Set the position size for the exchange"""
 
         try:
+            # fetch balance and bid/ask
             balance: dict = await self.exchange.fetch_balance()
             total_balance: float = balance.get("USDT", {}).get("total", 1)
-            usdt_size: float = (
+            _, ask = await self.get_bid_ask()
+
+            # calculate live position size
+            live_usdt_size: float = (
                 total_balance / (LIVE_SL_PERCENTAGE * LEVERAGE)
             ) * POSITION_PERCENTAGE
 
-            _, ask = await self.get_bid_ask()
-            position_size: float = round(usdt_size / ask * LEVERAGE * 1000, 1)
+            live_position_size: float = round(live_usdt_size / ask * LEVERAGE * 1000, 1)
+
+            # calculate reversed position size
+            reversed_usdt_size: float = (
+                total_balance / (REVERSED_SL_PERCENTAGE * LEVERAGE)
+            ) * POSITION_PERCENTAGE
+            reversed_position_size: float = round(
+                reversed_usdt_size / ask * LEVERAGE * 1000, 1
+            )
+
+            # journaling position size is a fixed small size for now
+            journaling_position_size: float = 0.1
+
         except Exception as e:
-            position_size = 0.1
+            live_position_size = 0.1
+            reversed_position_size = 0.1
+            journaling_position_size = 0.1
             logger.error(f"Error setting position size: {e}")
-        if not hasattr(self, "_position_size"):
-            self._position_size = position_size
-            logger.info(f"Initial {self._position_size=}")
+
+        # set the position sizes if they are not set yet
+        if (
+            not hasattr(self, "_live_position_size")
+            or not hasattr(self, "_reversed_position_size")
+            or not hasattr(self, "_journaling_position_size")
+        ):
+            self._live_position_size = live_position_size
+            self._reversed_position_size = reversed_position_size
+            self._journaling_position_size = journaling_position_size
+            logger.info(
+                f"Initial {self._live_position_size=} - {self._reversed_position_size=} - {self._journaling_position_size=}"
+            )
             return
-        if position_size != self._position_size:
-            logger.info(f"{position_size=}")
-            self._position_size = position_size
+        
+        # set the position sizes if they have changed
+        if (
+            live_position_size != self._live_position_size
+            or reversed_position_size != self._reversed_position_size
+            or journaling_position_size != self._journaling_position_size
+        ):
+            logger.info(
+                f"{live_position_size=} - {reversed_position_size=} - {journaling_position_size=}"
+            )
+            self._live_position_size = live_position_size
+            self._reversed_position_size = reversed_position_size
+            self._journaling_position_size = journaling_position_size
 
     @property
-    def position_size(self) -> int:
-        """Get the position size for the exchange"""
+    def live_position_size(self) -> int:
+        """Get the live position size for the exchange"""
 
-        return self._position_size
+        return self._live_position_size
+
+    @property
+    def reversed_position_size(self) -> int:
+        """Get the reversed position size for the exchange"""
+
+        return self._reversed_position_size
+
+    @property
+    def journaling_position_size(self) -> int:
+        """Get the journaling position size for the exchange"""
+
+        return self._journaling_position_size
 
     async def run_loop(self) -> None:
         """Run the loop for the exchange"""
@@ -277,7 +400,7 @@ class Exchange:
             bid_or_ask=bid_or_ask,
             days=JOURNALING_TRADING_DAYS,
             hours=JOURNALING_TRADING_HOURS,
-            amount=0.1,
+            amount=self.journaling_position_size,
             strategy_type=JOURNALING,
             stoploss_percentage=JOURNALING_SL_PERCENTAGE,
             takeprofit_percentage=JOURNALING_TP_PERCENTAGE,
@@ -299,7 +422,7 @@ class Exchange:
             bid_or_ask=bid_or_ask,
             days=REVERSED_TRADING_DAYS,
             hours=REVERSED_TRADING_HOURS,
-            amount=self.position_size,
+            amount=self.reversed_position_size,
             strategy_type=REVERSED,
             stoploss_percentage=REVERSED_SL_PERCENTAGE,
             takeprofit_percentage=REVERSED_TP_PERCENTAGE,
@@ -315,7 +438,7 @@ class Exchange:
             bid_or_ask=bid_or_ask,
             days=LIVE_TRADING_DAYS,
             hours=LIVE_TRADING_HOURS,
-            amount=self.position_size,
+            amount=self.live_position_size,
             strategy_type=LIVE,
             stoploss_percentage=LIVE_SL_PERCENTAGE,
             takeprofit_percentage=LIVE_TP_PERCENTAGE,
@@ -402,8 +525,8 @@ class Exchange:
 
         try:
             reaction_liquidation = deepcopy(liquidation)
-            
-            # reverse back the direction for logging
+
+            # revert back the liquidation direction for logging and journaling
             if strategy_type == REVERSED:
                 reaction_liquidation.direction = (
                     LONG if liquidation.direction == SHORT else SHORT
