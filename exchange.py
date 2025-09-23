@@ -280,7 +280,7 @@ class Exchange:
                 f"Initial {self._live_position_size=} - {self._reversed_position_size=} - {self._journaling_position_size=}"
             )
             return
-        
+
         # set the position sizes if they have changed
         if (
             live_position_size != self._live_position_size
@@ -533,7 +533,7 @@ class Exchange:
                 )
             order_log_info = dict(
                 strategy_type=strategy_type.capitalize(),
-                direction=liquidation.direction,
+                trade_direction=liquidation.direction,
                 amount=f"{amount} contract(s)",
                 price=f"$ {round(price, 2):,}",
                 stoploss=f"$ {round(stoploss_price, 2):,}",
@@ -545,7 +545,10 @@ class Exchange:
                 self.discord_message_queue.append(
                     (
                         DISCORD_CHANNEL_TRADES_ID,
-                        [f"{get_discord_table(order_log_info)}"],
+                        [
+                            f":bar_chart: New {liquidation.direction} trade :rocket:",
+                            f"{get_discord_table(order_log_info)}",
+                        ],
                         True if USE_AT_EVERYONE else False,
                     )
                 )
