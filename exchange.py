@@ -34,47 +34,60 @@ BLOFIN_API_KEY = config("BLOFIN_API_KEY")
 BLOFIN_PASSPHRASE = config("BLOFIN_PASSPHRASE")
 
 # trade settings
-LEVERAGE = config("LEVERAGE", cast=int, default=12)
+LEVERAGE = config("LEVERAGE", cast=int, default="20")
 logger.info(f"{LEVERAGE=}")
-POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=float, default=1)
+POSITION_PERCENTAGE = config("POSITION_PERCENTAGE", cast=float, default="1")
 logger.info(f"{POSITION_PERCENTAGE=}")
 
 # live strategy
 USE_LIVE_STRATEGY = config("USE_LIVE_STRATEGY", cast=bool, default=True)
 logger.info(f"{USE_LIVE_STRATEGY=}")
-LIVE_SL_PERCENTAGE = config("LIVE_SL_PERCENTAGE", cast=float, default=0.54)
+LIVE_SL_PERCENTAGE = config("LIVE_SL_PERCENTAGE", cast=float, default="0.5")
 logger.info(f"{LIVE_SL_PERCENTAGE=}")
-LIVE_TP_PERCENTAGE = config("LIVE_TP_PERCENTAGE", cast=float, default=4.74)
+LIVE_TP_PERCENTAGE = config("LIVE_TP_PERCENTAGE", cast=float, default="5.0")
 logger.info(f"{LIVE_TP_PERCENTAGE=}")
 LIVE_TRADING_DAYS = config("LIVE_TRADING_DAYS", cast=Csv(int), default="0,1,3,4,5,6")
 logger.info(f"{LIVE_TRADING_DAYS=}")
-LIVE_TRADING_HOURS = config(
-    "LIVE_TRADING_HOURS", cast=Csv(int), default="23,0,1,2,3,4,17,18,19,20"
-)
+LIVE_TRADING_HOURS = config("LIVE_TRADING_HOURS", cast=Csv(int), default="2,3,4")
 logger.info(f"{LIVE_TRADING_HOURS=}")
 
 # reversed strategy
 USE_REVERSED_STRATEGY = config("USE_REVERSED_STRATEGY", cast=bool, default=True)
 logger.info(f"{USE_REVERSED_STRATEGY=}")
-REVERSED_SL_PERCENTAGE = config("REVERSED_SL_PERCENTAGE", cast=float, default=0.40)
+REVERSED_SL_PERCENTAGE = config("REVERSED_SL_PERCENTAGE", cast=float, default="0.40")
 logger.info(f"{REVERSED_SL_PERCENTAGE=}")
-REVERSED_TP_PERCENTAGE = config("REVERSED_TP_PERCENTAGE", cast=float, default=4.09)
+REVERSED_TP_PERCENTAGE = config("REVERSED_TP_PERCENTAGE", cast=float, default="4.0")
 logger.info(f"{REVERSED_TP_PERCENTAGE=}")
 REVERSED_TRADING_DAYS = config(
     "REVERSED_TRADING_DAYS", cast=Csv(int), default="0,1,3,4,5,6"
 )
 logger.info(f"{REVERSED_TRADING_DAYS=}")
 REVERSED_TRADING_HOURS = config(
-    "REVERSED_TRADING_HOURS", cast=Csv(int), default="5,6,7,14,15,16"
+    "REVERSED_TRADING_HOURS", cast=Csv(int), default="14,15,16"
 )
 logger.info(f"{REVERSED_TRADING_HOURS=}")
+
+USE_GREY_STRATEGY = config("USE_GREY_STRATEGY", cast=bool, default=True)
+logger.info(f"{USE_GREY_STRATEGY=}")
+GREY_SL_PERCENTAGE = config("GREY_SL_PERCENTAGE", cast=float, default="0.8")
+logger.info(f"{GREY_SL_PERCENTAGE=}")
+GREY_TP_PERCENTAGE = config("GREY_TP_PERCENTAGE", cast=float, default="4.0")
+logger.info(f"{GREY_TP_PERCENTAGE=}")
+GREY_TRADING_DAYS = config("GREY_TRADING_DAYS", cast=Csv(int), default="0,1,3,4,5,6")
+logger.info(f"{GREY_TRADING_DAYS=}")
+GREY_TRADING_HOURS = config(
+    "GREY_TRADING_HOURS", cast=Csv(int), default="0,1,17,18,19,20,21,22,23"
+)
+logger.info(f"{GREY_TRADING_HOURS=}")
 
 # journaling strategy
 USE_JOURNALING_STRATEGY = config("USE_JOURNALING_STRATEGY", cast=bool, default=True)
 logger.info(f"{USE_JOURNALING_STRATEGY=}")
-JOURNALING_SL_PERCENTAGE = config("JOURNALING_SL_PERCENTAGE", cast=float, default=0.54)
+JOURNALING_SL_PERCENTAGE = config(
+    "JOURNALING_SL_PERCENTAGE", cast=float, default="0.8"
+)
 logger.info(f"{JOURNALING_SL_PERCENTAGE=}")
-JOURNALING_TP_PERCENTAGE = config("JOURNALING_TP_PERCENTAGE", cast=float, default=4.74)
+JOURNALING_TP_PERCENTAGE = config("JOURNALING_TP_PERCENTAGE", cast=float, default="4")
 logger.info(f"{JOURNALING_TP_PERCENTAGE=}")
 JOURNALING_TRADING_DAYS = config(
     "JOURNALING_TRADING_DAYS", cast=Csv(int), default="0,1,2,3,4,5,6"
@@ -250,6 +263,9 @@ class Exchange:
 
             live_position_size: float = round(live_usdt_size / ask * LEVERAGE * 1000, 1)
 
+            # set grey position size same as live for now
+            grey_position_size: float = live_position_size
+
             # calculate reversed position size
             reversed_usdt_size: float = (
                 total_balance / (REVERSED_SL_PERCENTAGE * LEVERAGE)
@@ -265,6 +281,7 @@ class Exchange:
             live_position_size = 0.1
             reversed_position_size = 0.1
             journaling_position_size = 0.1
+            grey_position_size = 0.1
             logger.error(f"Error setting position size: {e}")
 
         # set the position sizes if they are not set yet
@@ -272,12 +289,17 @@ class Exchange:
             not hasattr(self, "_live_position_size")
             or not hasattr(self, "_reversed_position_size")
             or not hasattr(self, "_journaling_position_size")
+            or not hasattr(self, "_grey_position_size")
         ):
             self._live_position_size = live_position_size
             self._reversed_position_size = reversed_position_size
             self._journaling_position_size = journaling_position_size
+            self._grey_position_size = grey_position_size
             logger.info(
-                f"Initial {self._live_position_size=} - {self._reversed_position_size=} - {self._journaling_position_size=}"
+                f"Initial {self._live_position_size=} - "
+                + f"{self._reversed_position_size=} - "
+                + f"{self._journaling_position_size=} - "
+                + f"{self._grey_position_size=}"
             )
             return
 
@@ -286,13 +308,18 @@ class Exchange:
             live_position_size != self._live_position_size
             or reversed_position_size != self._reversed_position_size
             or journaling_position_size != self._journaling_position_size
+            or grey_position_size != self._grey_position_size
         ):
             logger.info(
-                f"{live_position_size=} - {reversed_position_size=} - {journaling_position_size=}"
+                f"{live_position_size=} - "
+                + f"{reversed_position_size=} - "
+                + f"{journaling_position_size=} - "
+                + f"{grey_position_size=}"
             )
             self._live_position_size = live_position_size
             self._reversed_position_size = reversed_position_size
             self._journaling_position_size = journaling_position_size
+            self._grey_position_size = grey_position_size
 
     @property
     def live_position_size(self) -> int:
@@ -311,6 +338,12 @@ class Exchange:
         """Get the journaling position size for the exchange"""
 
         return self._journaling_position_size
+
+    @property
+    def grey_position_size(self) -> int:
+        """Get the grey position size for the exchange"""
+
+        return self._grey_position_size
 
     async def run_loop(self) -> None:
         """Run the loop for the exchange"""
@@ -442,6 +475,22 @@ class Exchange:
             strategy_type=LIVE,
             stoploss_percentage=LIVE_SL_PERCENTAGE,
             takeprofit_percentage=LIVE_TP_PERCENTAGE,
+        )
+
+    async def apply_grey_strategy(
+        self, liquidation: Liquidation, bid_or_ask: float
+    ) -> bool:
+        """Apply the grey strategy during trading hours and days"""
+
+        return await self.apply_strategy(
+            liquidation=liquidation,
+            bid_or_ask=bid_or_ask,
+            days=GREY_TRADING_DAYS,
+            hours=GREY_TRADING_HOURS,
+            amount=self.grey_position_size,
+            strategy_type="grey",
+            stoploss_percentage=GREY_SL_PERCENTAGE,
+            takeprofit_percentage=GREY_TP_PERCENTAGE,
         )
 
     async def get_sl_and_tp_price(
