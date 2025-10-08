@@ -83,9 +83,7 @@ logger.info(f"{GREY_TRADING_HOURS=}")
 # journaling strategy
 USE_JOURNALING_STRATEGY = config("USE_JOURNALING_STRATEGY", cast=bool, default=True)
 logger.info(f"{USE_JOURNALING_STRATEGY=}")
-JOURNALING_SL_PERCENTAGE = config(
-    "JOURNALING_SL_PERCENTAGE", cast=float, default="0.8"
-)
+JOURNALING_SL_PERCENTAGE = config("JOURNALING_SL_PERCENTAGE", cast=float, default="0.8")
 logger.info(f"{JOURNALING_SL_PERCENTAGE=}")
 JOURNALING_TP_PERCENTAGE = config("JOURNALING_TP_PERCENTAGE", cast=float, default="4")
 logger.info(f"{JOURNALING_TP_PERCENTAGE=}")
@@ -260,11 +258,13 @@ class Exchange:
             live_usdt_size: float = (
                 total_balance / (LIVE_SL_PERCENTAGE * LEVERAGE)
             ) * POSITION_PERCENTAGE
-
             live_position_size: float = round(live_usdt_size / ask * LEVERAGE * 1000, 1)
 
-            # set grey position size same as live for now
-            grey_position_size: float = live_position_size
+            # calculate grey position size
+            grey_usdt_size: float = (
+                total_balance / (GREY_SL_PERCENTAGE * LEVERAGE)
+            ) * POSITION_PERCENTAGE
+            grey_position_size: float = round(grey_usdt_size / ask * LEVERAGE * 1000, 1)
 
             # calculate reversed position size
             reversed_usdt_size: float = (
