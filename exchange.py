@@ -370,6 +370,11 @@ class Exchange:
             ):
                 trade = True
 
+            if USE_GREY_STRATEGY and await self.apply_grey_strategy(
+                liquidation, bid_or_ask
+            ):
+                trade = True
+
             if USE_REVERSED_STRATEGY and await self.apply_reversed_strategy(
                 liquidation, bid_or_ask
             ):
