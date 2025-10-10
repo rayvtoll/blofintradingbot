@@ -99,3 +99,4 @@ class LiquidationSet:
                     self.liquidations.remove(liquidation)
         except Exception as e:
             logger.error(f"Error removing old liquidations: {e}")
+            self.liquidations = []
