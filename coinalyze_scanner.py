@@ -5,7 +5,11 @@ from functools import cached_property
 from discord_client import USE_DISCORD
 
 if USE_DISCORD:
-    from discord_client import get_discord_table, DISCORD_CHANNEL_LIQUIDATIONS_ID
+    from discord_client import (
+        get_discord_table,
+        DISCORD_CHANNEL_LIQUIDATIONS_ID,
+        DISCORD_CHANNEL_HEARTBEAT_ID,
+    )
 from logger import logger
 from misc import Candle, Liquidation, LiquidationSet
 import requests
@@ -135,6 +139,17 @@ class CoinalyzeScanner:
                 logger.info(f"COINALYZE: {response_json}")
         except Exception as e:
             logger.error(str(e))
+            if USE_DISCORD:
+                self.exchange.discord_message_queue.append(
+                    (
+                        DISCORD_CHANNEL_HEARTBEAT_ID,
+                        [
+                            "Error fetching liquidations from Coinalyze:",
+                            str(e),
+                        ],
+                        False,
+                    )
+                )
             return []
 
         if not len(response_json):

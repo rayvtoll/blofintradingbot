@@ -18,6 +18,7 @@ if USE_DISCORD:
         USE_AT_EVERYONE,
         DISCORD_CHANNEL_TRADES_ID,
         DISCORD_CHANNEL_POSITIONS_ID,
+        DISCORD_CHANNEL_HEARTBEAT_ID,
     )
 
 USE_AUTO_JOURNALING = config("USE_AUTO_JOURNALING", cast=bool, default=False)
@@ -146,6 +147,17 @@ class Exchange:
         except Exception as e:
             logger.error(f"Error fetching positions: {e}")
             open_positions = []
+            if USE_DISCORD:
+                self.discord_message_queue.append(
+                    (
+                        DISCORD_CHANNEL_HEARTBEAT_ID,
+                        [
+                            "Error fetching positions from exchange:",
+                            str(e),
+                        ],
+                        False,
+                    )
+                )
 
         # get open market tpsl orders
         try:
@@ -170,6 +182,17 @@ class Exchange:
         except Exception as e:
             logger.error(f"Error fetching open orders: {e}")
             market_tpsl_orders_info = []
+            if USE_DISCORD:
+                self.discord_message_queue.append(
+                    (
+                        DISCORD_CHANNEL_HEARTBEAT_ID,
+                        [
+                            "Error fetching open orders from exchange:",
+                            str(e),
+                        ],
+                        False,
+                    )
+                )
 
         # get open limit orders
         try:
@@ -186,6 +209,17 @@ class Exchange:
         except Exception as e:
             logger.error(f"Error fetching open limit orders: {e}")
             limit_orders_info = []
+            if USE_DISCORD:
+                self.discord_message_queue.append(
+                    (
+                        DISCORD_CHANNEL_HEARTBEAT_ID,
+                        [
+                            "Error fetching open limit orders from exchange:",
+                            str(e),
+                        ],
+                        False,
+                    )
+                )
 
         # only log and post to discord if there are changes
         if (
@@ -243,6 +277,17 @@ class Exchange:
             return last_candle
         except Exception as e:
             logger.error(f"Error fetching ohlcv: {e}")
+            if USE_DISCORD:
+                self.discord_message_queue.append(
+                    (
+                        DISCORD_CHANNEL_HEARTBEAT_ID,
+                        [
+                            "Error fetching ohlcv from exchange:",
+                            str(e),
+                        ],
+                        False,
+                    )
+                )
             return None
 
     async def set_position_sizes(self) -> None:
@@ -283,6 +328,17 @@ class Exchange:
             journaling_position_size = 0.1
             grey_position_size = 0.1
             logger.error(f"Error setting position size: {e}")
+            if USE_DISCORD:
+                self.discord_message_queue.append(
+                    (
+                        DISCORD_CHANNEL_HEARTBEAT_ID,
+                        [
+                            "Error setting position size:",
+                            str(e),
+                        ],
+                        False,
+                    )
+                )
 
         # set the position sizes if they are not set yet
         if (
@@ -565,6 +621,17 @@ class Exchange:
             )
         except Exception as e:
             logger.error(f"Error placing order: {e}")
+            if USE_DISCORD:
+                self.discord_message_queue.append(
+                    (
+                        DISCORD_CHANNEL_HEARTBEAT_ID,
+                        [
+                            "Error placing order:",
+                            str(e),
+                        ],
+                        False,
+                    )
+                )
 
     async def do_order_logging(
         self,
@@ -638,6 +705,28 @@ class Exchange:
                         f"Error journaling position 1/2: {response.content if response else 'No response'}"
                     )
                     logger.error(f"Error journaling position 2/2: {e}")
+                    if USE_DISCORD:
+                        self.discord_message_queue.append(
+                            (
+                                DISCORD_CHANNEL_HEARTBEAT_ID,
+                                [
+                                    "Error journaling position:",
+                                    str(e),
+                                ],
+                                False,
+                            )
+                        )
 
         except Exception as e:
             logger.error(f"Error logging order: {e}")
+            if USE_DISCORD:
+                self.discord_message_queue.append(
+                    (
+                        DISCORD_CHANNEL_HEARTBEAT_ID,
+                        [
+                            "Error logging order:",
+                            str(e),
+                        ],
+                        False,
+                    )
+                )
